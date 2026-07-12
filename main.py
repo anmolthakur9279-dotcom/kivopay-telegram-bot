@@ -75,8 +75,7 @@ def translate_text(text):
     try:
         prompt = (
             "Detect the language of the following text and translate it to English. "
-            "If it is already in English, translate it to Arabic. "
-            "Reply with ONLY the translated text, no explanations.\n\n"
+            "Reply with ONLY the translated English text, no explanations, no language labels.\n\n"
             f"{text}"
         )
         response = gemini_client.models.generate_content(
@@ -97,10 +96,10 @@ def translate_image(file_id, caption):
         file_url = f"https://api.telegram.org/file/bot{BOT_TOKEN}/{bot_file.file_path}"
         img_bytes = urllib.request.urlopen(file_url).read()
         prompt = (
-            "Describe and translate any text visible in this image to English. "
-            "If the caption is provided, also translate it. "
+            "Detect the language of any text visible in this image and translate it to English. "
+            "If a caption is provided, also translate the caption to English. "
             f"Caption: {caption or 'None'}\n"
-            "Reply with only the translation/description."
+            "Reply with ONLY the translated English text, no explanations, no language labels."
         )
         response = gemini_client.models.generate_content(
             model="gemini-3.1-flash-lite",
@@ -307,6 +306,32 @@ def cmd_groups(message):
             name = "Unknown / Bot removed"
         lines.append(f"{idx}. {name}\n   `{chat_id}`")
     bot.reply_to(message, "\n".join(lines), parse_mode="Markdown")
+
+# ─────────────────────────────────────────────
+# /remove_group
+# ─────────────────────────────────────────────
+@bot.message_handler(commands=["remove_group"])
+def cmd_remove_group(message):
+    if not security_check(message):
+        return
+    if not is_admin(message):
+        bot.reply_to(message, "⛔ Admin only.")
+        return
+    parts = message.text.split(None, 1)
+    if len(parts) < 2:
+        bot.reply_to(message, "Usage: /remove_group <group_id>\nUse /groups to see all IDs.")
+        return
+    try:
+        chat_id = int(parts[1].strip())
+    except ValueError:
+        bot.reply_to(message, "❌ Invalid group ID. Must be a number (e.g. -1001234567890).")
+        return
+    if chat_id in tracked_groups:
+        tracked_groups.discard(chat_id)
+        save_groups()
+        bot.reply_to(message, f"✅ Group `{chat_id}` removed from tracking list.", parse_mode="Markdown")
+    else:
+        bot.reply_to(message, f"❌ Group `{chat_id}` is not in the tracking list.", parse_mode="Markdown")
 
 # ─────────────────────────────────────────────
 # /quota_status
@@ -697,16 +722,17 @@ def cmd_task_list(message):
     if not active_tasks:
         bot.reply_to(message, "📋 No active tasks.")
         return
-    lines = ["📋 *Active Tasks:*"]
-    for tid, task in active_tasks.items():
+    lines = [f"📋 *Active Tasks ({len(active_tasks)}):*\n"]
+    for pos, (tid, task) in enumerate(sorted(active_tasks.items(), key=lambda x: int(x[0])), start=1):
         ttype = task.get("type", "?")
+        emoji = "🔁" if ttype == "repeat" else "⏰"
         if ttype == "repeat":
             detail = f"every {task.get('interval_hours')}h"
         else:
             detail = f"daily at {task.get('scheduled_time')}"
-        content = "📷 photo" if task.get("photo_file_id") else f"💬 {str(task.get('text',''))[:30]}..."
-        lines.append(f"#{tid} [{ttype}] {detail} — {content}")
-    bot.reply_to(message, "\n".join(lines), parse_mode="Markdown")
+        content = "📷 photo" if task.get("photo_file_id") else f"💬 {str(task.get('text',''))[:40]}"
+        lines.append(f"{emoji} *ID #{tid}* — {detail}\n   {content}\n   Stop: /stop_rpt {tid}" if ttype == "repeat" else f"{emoji} *ID #{tid}* — {detail}\n   {content}\n   Stop: /stop_schdl {tid}")
+    bot.reply_to(message, "\n\n".join(lines), parse_mode="Markdown")
 
 # ─────────────────────────────────────────────
 # /clear_tasks
