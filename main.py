@@ -80,7 +80,7 @@ def translate_text(text):
             f"{text}"
         )
         response = gemini_client.models.generate_content(
-            model="gemini-2.5-flash-lite", contents=prompt
+            model="gemini-2.0-flash", contents=prompt
         )
         return response.text.strip()
     except Exception as e:
@@ -103,7 +103,7 @@ def translate_image(file_id, caption):
             "Reply with only the translation/description."
         )
         response = gemini_client.models.generate_content(
-            model="gemini-2.5-flash-lite",
+            model="gemini-2.0-flash",
             contents=[
                 prompt,
                 genai_types.Part.from_bytes(data=img_bytes, mime_type="image/jpeg"),
