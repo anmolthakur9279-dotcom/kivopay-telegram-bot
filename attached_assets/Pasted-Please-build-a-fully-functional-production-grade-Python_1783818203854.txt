@@ -1,0 +1,40 @@
+Please build a fully functional, production-grade Python Telegram Bot in main.py using pyTelegramBotAPI (telebot) and Google GenAI. The script must be completely written and ready to deploy without requiring any secondary setup or code edits.
+
+Strict Core Architecture & Features:
+
+1. Dynamic Admin Access Control & User Roles:
+   - PRIMARY_ADMIN = "AK04756"
+   - ALLOWED_ADMINS = ["ak04756", "kivo4159"]
+   - Configuration states (booleans): `public_access_enabled = True`, `translation_enabled = True`, `broadcast_enabled = True`, `schedule_enabled = True`, `repeat_enabled = True`.
+   - Implement an automated security interceptor before processing any command/message:
+     a) If sender's username (lowercase) is in `blacklisted_users`, reply: "❌ You have been banned from using this bot by the administrator." and abort.
+     b) If `public_access_enabled` is False and sender is NOT in ALLOWED_ADMINS, reply: "🔒 This bot is currently locked by the administrator. Only authorized users can access it." and abort.
+
+2. Reboot-Proof Persistent Storage (JSON Databases):
+   - Setup automatic JSON loading and file-saving helper functions for three persistent storage files:
+     * `blacklisted_users.json` -> Persists blocked usernames.
+     * `tracked_groups.json` -> Automatically keeps track of group chat IDs where the bot is added or `/start_tracking` is called.
+     * `active_tasks.json` -> Saves the full state of all running /repeat and /schedule tasks along with the sequential `task_counter` integer. Upon bot startup, it must read this file and instantly reschedule/reboot all running background loops so tasks survive server restarts perfectly.
+
+3. Media-Aware Broadcast, Repeat & Daily Scheduling Modules:
+   - All message propagation systems (/broadcast, /repeat, /schedule) MUST dynamically support BOTH plain text AND rich media formats (Photos/Images with Captions).
+   - If an admin passes a command along with an image, or replies to a photo using a command, the bot must capture the photo's `file_id` and its specific caption.
+   - Background threads (using Python's threading or a safe loop) must handle automated deliveries to all `tracked_groups`. When delivering text, use send_message; when delivering media, use send_photo with the exact stored caption.
+   - Every automation task must receive an auto-incrementing unique Task ID (1, 2, 3...) for tracking.
+
+4. Dynamic Role-Based /help Command Matrix:
+   - Single `/help` command that evaluates the sender's username on-the-fly:
+     * PRIMARY_ADMIN: Show all General Commands, Allowed Admin Commands, and Primary Admin Only controls.
+     * ALLOWED_ADMINS: Show only General and Allowed Admin commands.
+     * General Users: Show only translation and basic usage instructions.
+   - Exact commands matrix to build:
+     * General: /start, /trans <text>, /tr <text>, /translate (Photo + Caption or via Reply), /help
+     * Allowed Admin: /stop_bot, /start_bot, /quota_status, /broadcast <msg/media>, /repeat <hours> <msg/media>, /schedule <HH:MM AM/PM> <msg/media>, /stop_rpt <ID>, /stop_schdl <ID>, /task_list, /clear_tasks, /start_tracking (manually adds a group chat).
+     * Primary Admin Only: /toggle_trans, /toggle_broadcast, /toggle_schedule, /toggle_repeat, /toggle_public, /lock, /unlock, /block <username>, /unblock <username>
+
+5. Built-in 24/7 Alive Web Server (Crucial for Uptime Link):
+   - Embed a lightweight HTTP health-check server using Python's native `http.server` running on a separate background daemon thread listening on port `8080`.
+   - The server must respond with a `200 OK` status and the text "Bot is alive!" to any incoming GET request.
+   - Once deployment finishes, explicitly print and output the public live web service deployment URL in the agent response console so the user can easily plug it into UptimeRobot or Cron-Job.org.
+
+Ensure all file read/write operations and API calls are safely wrapped inside try-except blocks to prevent runtime crashes. Write the complete script securely and initiate execution instantly.
