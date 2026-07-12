@@ -1,36 +1,41 @@
-# [Project name]
+# Telegram Admin Bot
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+A fully-featured Python Telegram bot with admin access control, persistent task storage, AI-powered translation, and media-aware broadcast/scheduling.
 
 ## Run & Operate
 
-- `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000)
-- `pnpm run typecheck` — full typecheck across all packages
-- `pnpm run build` — typecheck + build all packages
-- `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
-- `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- Required env: `DATABASE_URL` — Postgres connection string
+- `python main.py` — run the bot (workflow: "Telegram Bot")
+- Health check server: port 8000
+- Bot polls Telegram for updates indefinitely, auto-restarts on crash
 
 ## Stack
 
-- pnpm workspaces, Node.js 24, TypeScript 5.9
-- API: Express 5
-- DB: PostgreSQL + Drizzle ORM
-- Validation: Zod (`zod/v4`), `drizzle-zod`
-- API codegen: Orval (from OpenAPI spec)
-- Build: esbuild (CJS bundle)
+- Python 3.11
+- pyTelegramBotAPI 4.x — Telegram bot framework
+- google-genai — Gemini 1.5 Flash for translation
+- Python threading — background tasks (repeat/schedule/broadcast)
+- http.server — built-in health check endpoint
 
 ## Where things live
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+- `main.py` — entire bot (single file)
+- `blacklisted_users.json` — blocked usernames (auto-created)
+- `tracked_groups.json` — group chat IDs (auto-created)
+- `active_tasks.json` — persisted repeat/schedule tasks + counter (auto-created)
 
 ## Architecture decisions
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
+- All three JSON files are loaded at startup and saved on every mutation — tasks survive restarts.
+- On startup, `restore_tasks()` re-spawns background threads for every saved repeat/schedule task.
+- Security interceptor runs at the top of every command handler — blacklist and public lock checked first.
+- Health server runs on port 8000 on a daemon thread; bot polling loop is in the main thread with auto-retry.
+- Switched from deprecated `google.generativeai` to `google.genai` (Client API).
 
 ## Product
 
-_Describe the high-level user-facing capabilities of this app once they exist._
+- **General users**: `/trans`, `/tr`, `/translate` (text and photo translation via Gemini)
+- **Allowed admins**: broadcast, repeat (interval), daily schedule, task management, group tracking
+- **Primary admin (ak04756)**: toggle all features, lock/unlock, block/unblock users
 
 ## User preferences
 
@@ -38,7 +43,15 @@ _Populate as you build — explicit user instructions worth remembering across s
 
 ## Gotchas
 
-_Populate as you build — sharp edges, "always run X before Y" rules._
+- Port 8080 is taken by existing workspace services — health server uses port 8000 instead
+- UptimeRobot ping URL: use `https://<your-replit-domain>/` (hitting port 8000 via proxy)
+- `google-generativeai` is deprecated — always use `google-genai` (`from google import genai`)
+- Do not add the bot to a group before `/start_tracking` — or send `/start` in the group so the bot auto-registers it
+
+## Required Secrets
+
+- `TELEGRAM_BOT_TOKEN` — from @BotFather on Telegram
+- `GOOGLE_API_KEY` — from https://aistudio.google.com/app/apikey
 
 ## Pointers
 
