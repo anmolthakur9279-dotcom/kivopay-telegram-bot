@@ -13,8 +13,8 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY", "")
 
-PRIMARY_ADMIN = "ak04756"
-ALLOWED_ADMINS = ["ak04756", "kivo4159"]
+PRIMARY_ADMIN = [ "ak04756" , "kivo4259" ]
+ALLOWED_ADMINS = ["ak04756", "Kivo4259"]
 
 # Runtime toggles
 public_access_enabled = True
