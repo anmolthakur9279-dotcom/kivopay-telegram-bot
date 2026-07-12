@@ -13,8 +13,8 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY", "")
 
-PRIMARY_ADMIN = [ "ak04756" , "kivo4259" ]
-ALLOWED_ADMINS = ["ak04756", "Kivo4259"]
+PRIMARY_ADMINS = ["ak04756", "kivo4259"]
+ALLOWED_ADMINS = ["ak04756", "kivo4259", "kivopaycarl"]
 
 # Runtime toggles
 public_access_enabled = True
@@ -141,7 +141,7 @@ def is_admin(message):
     return (message.from_user.username or "").lower() in ALLOWED_ADMINS
 
 def is_primary_admin(message):
-    return (message.from_user.username or "").lower() == PRIMARY_ADMIN
+    return (message.from_user.username or "").lower() in PRIMARY_ADMINS
 
 # ─────────────────────────────────────────────
 # GROUP TRACKING
@@ -225,7 +225,7 @@ def cmd_help(message):
         "/unblock <username> — Unblock a user\n"
     )
 
-    if username == PRIMARY_ADMIN:
+    if username in PRIMARY_ADMINS:
         text = general + admin_cmds + primary_cmds
     elif username in ALLOWED_ADMINS:
         text = general + admin_cmds
