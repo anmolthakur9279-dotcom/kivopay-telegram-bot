@@ -799,7 +799,7 @@ if __name__ == "__main__":
     # Start health-check HTTP server
     health_thread = threading.Thread(target=start_health_server, daemon=True)
     health_thread.start()
-    print("✅ Health check server started on port 8080")
+    print("✅ Health check server started on port 8000")
 
     # Print uptime URL hint
     import os as _os

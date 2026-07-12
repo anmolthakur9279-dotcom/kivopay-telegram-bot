@@ -31,4 +31,9 @@ app.use(express.urlencoded({ extended: true }));
 
 app.use("/api", router);
 
+// Root health check — for UptimeRobot / Cron-Job.org pings
+app.get("/", (_req, res) => {
+  res.status(200).type("text/plain").send("Bot is alive!");
+});
+
 export default app;
