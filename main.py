@@ -286,6 +286,29 @@ def cmd_start_tracking(message):
         bot.reply_to(message, "ℹ️ This command must be used in a group chat.")
 
 # ─────────────────────────────────────────────
+# /groups
+# ─────────────────────────────────────────────
+@bot.message_handler(commands=["groups"])
+def cmd_groups(message):
+    if not security_check(message):
+        return
+    if not is_admin(message):
+        bot.reply_to(message, "⛔ Admin only.")
+        return
+    if not tracked_groups:
+        bot.reply_to(message, "📭 No groups are currently being tracked.")
+        return
+    lines = [f"📋 *Tracked Groups ({len(tracked_groups)}):*\n"]
+    for idx, chat_id in enumerate(tracked_groups, start=1):
+        try:
+            chat = bot.get_chat(chat_id)
+            name = chat.title or chat.username or "Unknown"
+        except Exception:
+            name = "Unknown / Bot removed"
+        lines.append(f"{idx}. {name}\n   `{chat_id}`")
+    bot.reply_to(message, "\n".join(lines), parse_mode="Markdown")
+
+# ─────────────────────────────────────────────
 # /quota_status
 # ─────────────────────────────────────────────
 @bot.message_handler(commands=["quota_status"])
