@@ -1044,6 +1044,13 @@ class InternalAPIHandler(BaseHTTPRequestHandler):
         return {}
 
     def do_GET(self):
+        # Railway health check
+        if self.path == "/":
+            self.send_response(200)
+            self.send_header("Content-Type", "text/plain")
+            self.end_headers()
+            self.wfile.write(b"Bot is alive!")
+            return
         if self.path == "/status":
             self._send(
                 200,
@@ -1232,28 +1239,12 @@ class InternalAPIHandler(BaseHTTPRequestHandler):
         pass  # Suppress access logs
 
 
-def start_internal_api():
-    server = HTTPServer(("127.0.0.1", 8001), InternalAPIHandler)
-    server.serve_forever()
+    def start_internal_api():
+        PORT = int(os.environ.get("PORT", 8000))
+        server = HTTPServer(("0.0.0.0", PORT), InternalAPIHandler)
+        print(f"✅ Admin API listening on port {PORT}")
+        server.serve_forever()
 
-
-# ─────────────────────────────────────────────
-# HEALTH CHECK WEB SERVER (port 8000)
-# ─────────────────────────────────────────────
-class HealthHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200)
-        self.send_header("Content-Type", "text/plain")
-        self.end_headers()
-        self.wfile.write(b"Bot is alive!")
-
-    def log_message(self, format, *args):
-        pass
-
-
-def start_health_server():
-    PORT = int(os.environ.get("PORT", 8000))
-    server = HTTPServer(("0.0.0.0", PORT), HealthHandler)
 
 
 # ─────────────────────────────────────────────
@@ -1264,9 +1255,7 @@ if __name__ == "__main__":
         print("❌ TELEGRAM_BOT_TOKEN is not set. Exiting.")
         exit(1)
 
-    # Start health-check HTTP server on port 8000
-    threading.Thread(target=start_health_server, daemon=True).start()
-    print("✅ Health check server started on port 8000")
+   
 
     # Start internal API server on port 8001 (localhost only, for admin dashboard)
     threading.Thread(target=start_internal_api, daemon=True).start()
