@@ -196,10 +196,10 @@ def on_new_member(message):
 # ─────────────────────────────────────────────
 # BROADCAST DELIVERY
 # ─────────────────────────────────────────────
-def deliver_to_groups(text=None, photo_file_id=None, caption=None, targeted_group_ids=None):
-    """Send to specified groups, or all tracked groups if targeted_group_ids is None/empty."""
+def deliver_to_groups(text=None, photo_file_id=None, caption=None, targeted_group_ids=None, photo_path=None):
+    """Send to specified groups, or all tracked groups if targeted_group_ids is None/empty.
+    Auto-removes stale groups (403 Forbidden / 400 group-upgraded errors)."""
     if targeted_group_ids:
-        # Only send to groups that are still tracked
         target_ids = [
             info["id"]
             for cid, info in tracked_groups.items()
@@ -208,14 +208,28 @@ def deliver_to_groups(text=None, photo_file_id=None, caption=None, targeted_grou
     else:
         target_ids = [info["id"] for info in tracked_groups.values()]
 
+    stale_ids = []
     for chat_id in target_ids:
         try:
-            if photo_file_id:
+            if photo_path and os.path.exists(photo_path):
+                with open(photo_path, "rb") as f:
+                    bot.send_photo(chat_id, f, caption=caption or text)
+            elif photo_file_id:
                 bot.send_photo(chat_id, photo_file_id, caption=caption)
             else:
                 bot.send_message(chat_id, text)
         except Exception as e:
-            print(f"[WARN] Failed to deliver to {chat_id}: {e}")
+            err = str(e)
+            if "Error code: 403" in err or (
+                "Error code: 400" in err and any(kw in err for kw in ["kicked", "upgraded", "deleted", "deactivated"])
+            ):
+                print(f"[INFO] Auto-removing stale group {chat_id}: {err[:80]}")
+                stale_ids.append(chat_id)
+            else:
+                print(f"[WARN] Failed to deliver to {chat_id}: {e}")
+
+    for chat_id in stale_ids:
+        _remove_group(chat_id)
 
 
 # ─────────────────────────────────────────────
@@ -574,6 +588,7 @@ def _register_task(
     photo_file_id=None,
     caption=None,
     targeted_groups=None,
+    photo_path=None,
 ):
     tid = str(task_id)
     active_tasks[tid] = {
@@ -583,6 +598,7 @@ def _register_task(
         "scheduled_time": scheduled_time,
         "text": text,
         "photo_file_id": photo_file_id,
+        "photo_path": photo_path,
         "caption": caption,
         "targeted_groups": targeted_groups or [],  # [] = broadcast to ALL groups
     }
@@ -605,15 +621,16 @@ def _stop_event_for(task_id):
 # ─────────────────────────────────────────────
 # REPEAT TASK
 # ─────────────────────────────────────────────
-def _run_repeat(task_id, interval_hours, text, photo_file_id, caption):
+def _run_repeat(task_id, interval_hours, text, photo_file_id, caption, photo_path=None):
     stop_event = _stop_event_for(task_id)
     while not stop_event.is_set():
-        # Always re-read targeted_groups from active_tasks so dashboard updates take effect
         task = active_tasks.get(str(task_id), {})
         tg = task.get("targeted_groups") or []
+        pp = task.get("photo_path") or photo_path
         deliver_to_groups(
             text=text,
             photo_file_id=photo_file_id,
+            photo_path=pp,
             caption=caption,
             targeted_group_ids=tg if tg else None,
         )
@@ -669,7 +686,7 @@ def cmd_repeat(message):
 # ─────────────────────────────────────────────
 # SCHEDULE TASK
 # ─────────────────────────────────────────────
-def _run_schedule(task_id, scheduled_time_str, text, photo_file_id, caption):
+def _run_schedule(task_id, scheduled_time_str, text, photo_file_id, caption, photo_path=None):
     stop_event = _stop_event_for(task_id)
     while not stop_event.is_set():
         now = datetime.datetime.now()
@@ -692,9 +709,11 @@ def _run_schedule(task_id, scheduled_time_str, text, photo_file_id, caption):
             break
         task = active_tasks.get(str(task_id), {})
         tg = task.get("targeted_groups") or []
+        pp = task.get("photo_path") or photo_path
         deliver_to_groups(
             text=text,
             photo_file_id=photo_file_id,
+            photo_path=pp,
             caption=caption,
             targeted_group_ids=tg if tg else None,
         )
@@ -872,16 +891,17 @@ def restore_tasks():
         ttype = task.get("type")
         text = task.get("text")
         photo_file_id = task.get("photo_file_id")
+        photo_path = task.get("photo_path")
         caption = task.get("caption")
         task_id = task.get("id")
         if ttype == "repeat":
             interval_hours = task.get("interval_hours", 1)
-            t = threading.Thread(target=_run_repeat, args=(task_id, interval_hours, text, photo_file_id, caption), daemon=True)
+            t = threading.Thread(target=_run_repeat, args=(task_id, interval_hours, text, photo_file_id, caption), kwargs={"photo_path": photo_path}, daemon=True)
             t.start()
             print(f"[INFO] Restored repeat task #{task_id} (every {interval_hours}h)")
         elif ttype == "schedule":
             scheduled_time = task.get("scheduled_time")
-            t = threading.Thread(target=_run_schedule, args=(task_id, scheduled_time, text, photo_file_id, caption), daemon=True)
+            t = threading.Thread(target=_run_schedule, args=(task_id, scheduled_time, text, photo_file_id, caption), kwargs={"photo_path": photo_path}, daemon=True)
             t.start()
             print(f"[INFO] Restored schedule task #{task_id} (daily at {scheduled_time})")
 
@@ -931,14 +951,63 @@ class InternalAPIHandler(BaseHTTPRequestHandler):
                 return
             text = body.get("text")
             photo_file_id = body.get("photo_file_id")
+            photo_path = body.get("photo_path")
             caption = body.get("caption")
             tg = body.get("targeted_groups") or None
             threading.Thread(
                 target=deliver_to_groups,
-                kwargs={"text": text, "photo_file_id": photo_file_id, "caption": caption, "targeted_group_ids": tg},
+                kwargs={"text": text, "photo_file_id": photo_file_id, "photo_path": photo_path,
+                        "caption": caption, "targeted_group_ids": tg},
                 daemon=True,
             ).start()
             self._send(200, {"ok": True, "targets": len(tg) if tg else len(tracked_groups)})
+
+        elif self.path == "/tasks":
+            body = self._read_body()
+            task_type = body.get("type")
+            if task_type not in ("repeat", "schedule"):
+                self._send(400, {"error": "type must be 'repeat' or 'schedule'"})
+                return
+            text = body.get("text", "").strip()
+            photo_path = body.get("photo_path")
+            interval_hours = body.get("interval_hours")
+            scheduled_time = body.get("scheduled_time")
+
+            if task_type == "repeat" and not interval_hours:
+                self._send(400, {"error": "interval_hours required for repeat tasks"})
+                return
+            if task_type == "schedule" and not scheduled_time:
+                self._send(400, {"error": "scheduled_time required for schedule tasks"})
+                return
+            if not text and not photo_path:
+                self._send(400, {"error": "text or photo_path required"})
+                return
+
+            tid = _new_task_id()
+            _register_task(
+                tid, task_type,
+                interval_hours=float(interval_hours) if interval_hours else None,
+                scheduled_time=scheduled_time,
+                text=text or None,
+                photo_path=photo_path,
+            )
+            if task_type == "repeat":
+                t = threading.Thread(
+                    target=_run_repeat,
+                    args=(tid, float(interval_hours), text or None, None, None),
+                    kwargs={"photo_path": photo_path},
+                    daemon=True,
+                )
+            else:
+                t = threading.Thread(
+                    target=_run_schedule,
+                    args=(tid, scheduled_time, text or None, None, None),
+                    kwargs={"photo_path": photo_path},
+                    daemon=True,
+                )
+            t.start()
+            self._send(200, {"ok": True, "task_id": tid})
+
         else:
             self._send(404, {"error": "not found"})
 

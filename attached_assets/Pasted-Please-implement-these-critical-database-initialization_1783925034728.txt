@@ -1,0 +1,30 @@
+Please implement these critical database initialization fixes, security alignment updates, and major feature upgrades to the dashboard UI and backend routing immediately. Treat this as the definitive, final command to resolve all loading bugs and fully build the web control panels:
+
+################################################################################
+1. FIX STUCK API ENDPOINTS & INITIALIZE DATABASE DEFAULTS
+################################################################################
+- The dashboard is currently stuck showing "Loading..." states because it cannot fetch the target JSON API endpoints. 
+- Audit and repair the Express routes for '/api/admin/stats', '/api/admin/groups', and '/api/admin/tasks'. Ensure they properly validate the user's logged-in session cookie and instantly serve clean JSON payloads.
+- If any local JSON storage files (like tracked_groups.json or tasks.json) are missing, empty, or uninitialized, instantly intercept the failure and auto-populate them with valid empty object/array structures ({}) on boot so the API returns valid content instantly and the web views load without hanging.
+
+################################################################################
+2. VISUAL AUTOMATION SCHEDULER & CRUD CONTROLLER
+################################################################################
+- Add a brand new visual card/section on the '/admin' UI titled "Create Scheduled & Repeat Tasks".
+- Inside this control layout, implement inputs for: Task Type (Dropdown menu selecting: Repeat Interval or One-time Schedule), Time Parameters (Input for interval in minutes/hours OR a specific Date-Time selector UI), and the core text Message Body area.
+- In the "Active Tasks" table layout below, render a clear, highly responsive "🗑️ Delete / Stop Task" button right next to each entry loop. Clicking this button must execute a dynamic DELETE/POST API hook to instantly drop the task from the tracking database and kill its running background execution state in main.py.
+
+################################################################################
+3. MULTIPART MEDIA UPLOAD INTEGRATION (IMAGE SUPPORT)
+################################################################################
+- Add a clean file selection element ("Choose Image/File") to both the Manual Broadcast form layout and the new Automated Task Scheduling card.
+- Configure the Express server layer to accept, validate, and store multipart/form-data media blocks securely in a dedicated temporary upload folder.
+- Establish a seamless handshake pass-off between the Express backend and the Python main.py script. When an image path is present, ensure the system routes the message payload dynamically using the bot's standard photo-sending function (bot.send_photo) alongside the custom text context instead of plain text delivery.
+
+################################################################################
+4. AUTO-CLEANUP ROUTINES FOR STALE GROUPS
+################################################################################
+- Integrate defensive error checking directly into the bot dispatch routine. 
+- If any automation cycle or manual broadcast encounters an explicit Telegram API error 403 (Forbidden) or 400 (Bad Request)—indicating the bot has been kicked, or the chat group has been deleted/upgraded to a supergroup—instantly purge that group entry from the tracked_groups database list and force-refresh the dashboard display live with zero manual intervention.
+
+Compile the fully updated code architectures, run a rigorous background typecheck, clear out the asset buffers, and restart the live operational dual-server workflows right away.
