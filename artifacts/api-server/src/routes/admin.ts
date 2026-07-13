@@ -1,4 +1,9 @@
-import { Router, type Request, type Response, type NextFunction } from "express";
+import {
+  Router,
+  type Request,
+  type Response,
+  type NextFunction,
+} from "express";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
@@ -40,11 +45,18 @@ function requireAuthApi(req: Request, res: Response, next: NextFunction) {
 }
 
 // ─── Helper: call Python internal API ────────────────────────────────────────
-async function pyFetch(path: string, options: RequestInit = {}, timeoutMs = 4000) {
+async function pyFetch(
+  path: string,
+  options: RequestInit = {},
+  timeoutMs = 4000,
+) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
-    const res = await fetch(`${BOT_INTERNAL_API}${path}`, { ...options, signal: ctrl.signal });
+    const res = await fetch(`${BOT_INTERNAL_API}${path}`, {
+      ...options,
+      signal: ctrl.signal,
+    });
     return res;
   } finally {
     clearTimeout(timer);
@@ -62,20 +74,34 @@ function readJsonFile(filePath: string, fallback: any) {
 }
 
 function getGroupsFallback(): any[] {
-  const raw = readJsonFile(path.resolve(process.cwd(), "tracked_groups.json"), {});
-  if (Array.isArray(raw)) return raw.map((id: number) => ({ id, name: `Group ${id}` }));
+  const raw = readJsonFile(
+    path.resolve(process.cwd(), "tracked_groups.json"),
+    {},
+  );
+  if (Array.isArray(raw))
+    return raw.map((id: number) => ({ id, name: `Group ${id}` }));
   return Object.values(raw as Record<string, any>);
 }
 
 function getTasksFallback(): any[] {
-  const raw = readJsonFile(path.resolve(process.cwd(), "active_tasks.json"), { tasks: {} });
+  const raw = readJsonFile(path.resolve(process.cwd(), "active_tasks.json"), {
+    tasks: {},
+  });
   return Object.values((raw.tasks || raw) as Record<string, any>);
 }
 
 function getStatusFallback() {
   const groups = getGroupsFallback();
   const tasks = getTasksFallback();
-  return { tracked_groups: groups.length, active_tasks: tasks.length, public_access: true, translation: true, broadcast: true, schedule: true, repeat: true };
+  return {
+    tracked_groups: groups.length,
+    active_tasks: tasks.length,
+    public_access: true,
+    translation: true,
+    broadcast: true,
+    schedule: true,
+    repeat: true,
+  };
 }
 
 // ─── Login page ──────────────────────────────────────────────────────────────
@@ -103,7 +129,7 @@ button{width:100%;padding:11px;background:#3b82f6;color:#fff;border:none;border-
        font-size:.95rem;font-weight:600;cursor:pointer;transition:background .2s}
 button:hover{background:#2563eb}
 .err{background:#2d1b1b;border:1px solid #7f1d1d;color:#fca5a5;border-radius:8px;
-     padding:10px 14px;font-size:.85rem;margin-bottom:20px;display:${failed?"block":"none"}}
+     padding:10px 14px;font-size:.85rem;margin-bottom:20px;display:${failed ? "block" : "none"}}
 </style></head><body>
 <div class="card">
   <div class="logo"><span class="logo-icon">🤖</span><h1>Bot Admin Panel</h1><p class="sub">Primary admin access only</p></div>
@@ -300,6 +326,28 @@ textarea{resize:vertical;min-height:72px}
         </div>
         <img id="ct-preview" class="preview-img"/>
         <span id="ct-file-name" style="color:#64748b;font-size:.75rem"></span>
+        <label class="field-label">Target Groups</label>
+
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+            <button type="button"
+                class="btn btn-secondary"
+                onclick="toggleAllTaskGroups()">
+                Select All Groups
+            </button>
+
+            <small id="ct-group-info">
+                No groups selected
+            </small>
+        </div>
+
+        <div id="ct-groups"
+             style="
+                display:flex;
+                flex-wrap:wrap;
+                gap:8px;
+                margin-bottom:16px;
+        ">
+        </div>
       </div>
       <div style="margin-top:14px">
         <button class="btn btn-success" id="ct-btn" onclick="createTask()">Create Task</button>
@@ -663,6 +711,14 @@ async function createTask(){
     fd.append('type',type);
     if(text)fd.append('text',text);
     if(file)fd.append('image',file);
+    const selectedGroups = [];
+document.querySelectorAll('.task-group-chip.selected').forEach(chip =>
+    selectedGroups.push(chip.dataset.chatId);
+});
+
+if (selectedGroups.length > 0) {
+    fd.append('target_groups', JSON.stringify(selectedGroups));
+}
     if(type==='repeat')fd.append('interval_hours',hours);
     if(type==='schedule'){
       // Convert HH:MM to 12h format for Python bot
@@ -742,7 +798,12 @@ router.put(
   requireAuthApi,
   upload.single("image"),
   async (req: Request, res: Response) => {
-    const { text, interval_hours, scheduled_time, targeted_groups: tgRaw } = req.body as Record<string, string>;
+    const {
+      text,
+      interval_hours,
+      scheduled_time,
+      targeted_groups: tgRaw,
+    } = req.body as Record<string, string>;
     const photoPath = (req.file as Express.Multer.File | undefined)?.path;
     const tg = tgRaw ? JSON.parse(tgRaw) : undefined;
 
@@ -813,18 +874,31 @@ router.post(
   requireAuthApi,
   upload.single("image"),
   async (req: Request, res: Response) => {
-    const { type, text, interval_hours, scheduled_time } = req.body as Record<string, string>;
+    const {
+      type,
+      text,
+      interval_hours,
+      scheduled_time,
+      target_groups: tgRaw
+    } = req.body as Record<string, string>;
     const photoPath = (req.file as Express.Multer.File | undefined)?.path;
 
-    if (!type) { res.status(400).json({ error: "type required" }); return; }
-    if (!text && !photoPath) { res.status(400).json({ error: "text or image required" }); return; }
+    if (!type) {
+      res.status(400).json({ error: "type required" });
+      return;
+    }
+    if (!text && !photoPath) {
+      res.status(400).json({ error: "text or image required" });
+      return;
+    }
 
     try {
       const payload: any = { type, text: text || null };
       if (photoPath) payload.photo_path = photoPath;
       if (interval_hours) payload.interval_hours = parseFloat(interval_hours);
       if (scheduled_time) payload.scheduled_time = scheduled_time;
-
+      const tg = tgRaw ? JSON.parse(tgRaw) : undefined;
+      if (tg !== undefined) payload.targeted_groups = tg;
       const r = await pyFetch("/tasks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },

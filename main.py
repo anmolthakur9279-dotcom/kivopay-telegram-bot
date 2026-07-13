@@ -1100,7 +1100,7 @@ class InternalAPIHandler(BaseHTTPRequestHandler):
             photo_path = body.get("photo_path")
             interval_hours = body.get("interval_hours")
             scheduled_time = body.get("scheduled_time")
-
+            target_groups = body.get("targeted_groups")
             if task_type == "repeat" and not interval_hours:
                 self._send(400, {"error": "interval_hours required for repeat tasks"})
                 return
@@ -1119,6 +1119,7 @@ class InternalAPIHandler(BaseHTTPRequestHandler):
                 scheduled_time=scheduled_time,
                 text=text or None,
                 photo_path=photo_path,
+                targeted_groups=target_groups,
             )
             if task_type == "repeat":
                 t = threading.Thread(
