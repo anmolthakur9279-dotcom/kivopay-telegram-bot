@@ -8,7 +8,7 @@ from google import genai as genai_client
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 # ─────────────────────────────────────────────
-# CONFIG
+# CONFIGb 
 # ─────────────────────────────────────────────
 BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY", "")

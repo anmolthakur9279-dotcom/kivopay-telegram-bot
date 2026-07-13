@@ -1,4 +1,32 @@
 {
-  "counter": 2,
-  "tasks": {}
+  "counter": 9,
+  "tasks": {
+    "7": {
+      "id": 7,
+      "type": "repeat",
+      "interval_hours": 0.5,
+      "scheduled_time": null,
+      "text": null,
+      "photo_file_id": "AgACAgUAAxkBAAIBBGpTNzjZvKWfYRaLpxeaO6P_E4qYAALPEGsbJ92YVqyaRruBoD6yAQADAgADeQADPAQ",
+      "caption": "\ud83d\udd25 Join KivoPay today!\n\ud83d\udcb0 Newcomer rewards up to \u20b91100\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n\ud83c\udf81 Complete 20 orders on your first day of registration\n\ud83d\udcb0 Claim \u20b9100 instantly\n\ud83d\udc47\n\ud83d\ude80 Complete 7 consecutive days of newcomer tasks\n\ud83d\udcb0 Claim an additional \u20b91000\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n\ud83d\udc65 Earn more by inviting friends!\n\u2705 Your friend completes 20 orders on their first day of registration\n\ud83c\udf81 You claim \u20b9300 instantly\n\ud83d\udcf2 Claim your reward within the app\n\ud83d\udc47\n\u2705 Your friend completes all 7 days of newcomer tasks\n\ud83c\udf81 You claim an additional \u20b9700\n\ud83d\udd25 Maximum reward of \u20b91000 per valid friend!\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n\ud83d\ude80 The bigger your team, the higher your earnings!\n\ud83d\udc8e Your friends keep completing orders\n\ud83d\udcb0 You keep earning team commissions\n\ud83d\udcc8 Earn stable, long-term income\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n\u23f0 Limited-time offer (July 11th - July 31st), participate now!\n\ud83d\udc47 Register for KivoPay now\n\ud83d\udcb0 Start earning today!"
+    },
+    "8": {
+      "id": 8,
+      "type": "repeat",
+      "interval_hours": 0.5,
+      "scheduled_time": null,
+      "text": null,
+      "photo_file_id": "AgACAgUAAxkBAAIBNmpTQbv_QVHV8Tu5ehrXE2ghVvNXAALcD2sbUkiYVlvPA6Q7MJkBAQADAgADeAADPAQ",
+      "caption": "\ud83d\udfe2Attention all new users\ud83d\udfe2\n\ud83d\udccc\u00a0After order confirmation, you need to upload a screenshot of the payment.\nA 10-minute countdown will be displayed at the top of the page. Please lock your order before the countdown ends. After locking the order, please immediately capture and upload your payment proof. After uploading, please click the \"Submit\" button below. Only then will your order be considered successfully locked. \u2705\n\u2705\u00a0If the payment was successful, please upload this screenshot.\n\u23f3\u00a0If the payment status changes to \"Pending\", please take a screenshot of the pending status and upload the screenshot.\n\ud83e\uddfe\u00a0After that, you will receive a UTR number, which you must submit correctly.\n\u26a0\ufe0f\u00a0Your order will not be considered complete if you do not submit a screenshot and UTR number."
+    },
+    "9": {
+      "id": 9,
+      "type": "repeat",
+      "interval_hours": 1.0,
+      "scheduled_time": null,
+      "text": "\ud83d\udce2[KivoPay Official Announcement]\n\nTo ensure the safety of users' funds on the platform, we are now publishing the official contact information for KivoPay Order Verification Assistant:\n\n\ud83d\udcde 9708401655\n\ud83d\udcde 9691997161\n\ud83d\udcde 9128119159\nAll  numbers above are contact information for KivoPay's official order verification assistant.\n\n\u26a0\ufe0f Besides the numbers mentioned above, any person who contacts you unsolicited, impersonates platform staff, customer service, order reviewers, or financial personnel, is a scammer. Do not trust them, and never disclose your account information, verification codes, or transfer any money to them.\n\nWhen you receive messages or calls from the above official numbers, please cooperate actively in order verification and maintain polite and courteous communication to jointly safeguard a positive platform service environment.\n\nIf you have any doubts, please verify through official channels to avoid being scammed.\n\nKivoPay Operations Center",
+      "photo_file_id": null,
+      "caption": null
+    }
+  }
 }
