@@ -1239,23 +1239,20 @@ class InternalAPIHandler(BaseHTTPRequestHandler):
         pass  # Suppress access logs
 
 
-    def start_internal_api():
-        PORT = int(os.environ.get("PORT", 8000))
-        server = HTTPServer(("0.0.0.0", PORT), InternalAPIHandler)
-        print(f"✅ Admin API listening on port {PORT}")
-        server.serve_forever()
-
-
-
 # ─────────────────────────────────────────────
 # MAIN
 # ─────────────────────────────────────────────
+def start_internal_api():
+    PORT = int(os.environ.get("PORT", 8000))
+    server = HTTPServer(("0.0.0.0", PORT), InternalAPIHandler)
+    print(f"✅ Admin API listening on port {PORT}")
+    server.serve_forever()
+
+
 if __name__ == "__main__":
     if not BOT_TOKEN:
         print("❌ TELEGRAM_BOT_TOKEN is not set. Exiting.")
         exit(1)
-
-   
 
     # Start internal API server on port 8001 (localhost only, for admin dashboard)
     threading.Thread(target=start_internal_api, daemon=True).start()
