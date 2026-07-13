@@ -59,11 +59,11 @@ def _load_groups():
 
 
 blacklisted_users = set(_load_json(BLACKLIST_FILE, []))
-tracked_groups = _load_groups()   # {str(chat_id): {"id": int, "name": str}}
+tracked_groups = _load_groups()  # {str(chat_id): {"id": int, "name": str}}
 tasks_data = _load_json(TASKS_FILE, {"counter": 0, "tasks": {}})
 task_counter = tasks_data.get("counter", 0)
-active_tasks = tasks_data.get("tasks", {})   # {str(task_id): task_dict}
-task_stop_events = {}                         # {str(task_id): threading.Event}
+active_tasks = tasks_data.get("tasks", {})  # {str(task_id): task_dict}
+task_stop_events = {}  # {str(task_id): threading.Event}
 
 
 def save_blacklist():
@@ -160,13 +160,19 @@ def security_check(message):
     username = (message.from_user.username or "").lower()
     if username in blacklisted_users:
         try:
-            bot.reply_to(message, "❌ You have been banned from using this bot by the administrator.")
+            bot.reply_to(
+                message,
+                "❌ You have been banned from using this bot by the administrator.",
+            )
         except Exception:
             pass
         return False
     if not public_access_enabled and username not in ALLOWED_ADMINS:
         try:
-            bot.reply_to(message, "🔒 This bot is currently locked by the administrator. Only authorized users can access it.")
+            bot.reply_to(
+                message,
+                "🔒 This bot is currently locked by the administrator. Only authorized users can access it.",
+            )
         except Exception:
             pass
         return False
@@ -189,14 +195,24 @@ def on_new_member(message):
     if message.new_chat_members:
         for member in message.new_chat_members:
             if member.id == bot.get_me().id:
-                name = message.chat.title or message.chat.username or f"Group {message.chat.id}"
+                name = (
+                    message.chat.title
+                    or message.chat.username
+                    or f"Group {message.chat.id}"
+                )
                 _add_group(message.chat.id, name)
 
 
 # ─────────────────────────────────────────────
 # BROADCAST DELIVERY
 # ─────────────────────────────────────────────
-def deliver_to_groups(text=None, photo_file_id=None, caption=None, targeted_group_ids=None, photo_path=None):
+def deliver_to_groups(
+    text=None,
+    photo_file_id=None,
+    caption=None,
+    targeted_group_ids=None,
+    photo_path=None,
+):
     """Send to specified groups, or all tracked groups if targeted_group_ids is None/empty.
     Auto-removes stale groups (403 Forbidden / 400 group-upgraded errors)."""
     if targeted_group_ids:
@@ -221,7 +237,10 @@ def deliver_to_groups(text=None, photo_file_id=None, caption=None, targeted_grou
         except Exception as e:
             err = str(e)
             if "Error code: 403" in err or (
-                "Error code: 400" in err and any(kw in err for kw in ["kicked", "upgraded", "deleted", "deactivated"])
+                "Error code: 400" in err
+                and any(
+                    kw in err for kw in ["kicked", "upgraded", "deleted", "deactivated"]
+                )
             ):
                 print(f"[INFO] Auto-removing stale group {chat_id}: {err[:80]}")
                 stale_ids.append(chat_id)
@@ -242,7 +261,9 @@ def cmd_start(message):
     if message.chat.type in ("group", "supergroup"):
         name = message.chat.title or f"Group {message.chat.id}"
         _add_group(message.chat.id, name)
-    bot.reply_to(message, "👋 Hello! I'm online and ready. Use /help to see available commands.")
+    bot.reply_to(
+        message, "👋 Hello! I'm online and ready. Use /help to see available commands."
+    )
 
 
 # ─────────────────────────────────────────────
@@ -316,7 +337,9 @@ def cmd_translate(message):
     if not security_check(message):
         return
     if not translation_enabled:
-        bot.reply_to(message, "🔇 Translation is currently disabled by the administrator.")
+        bot.reply_to(
+            message, "🔇 Translation is currently disabled by the administrator."
+        )
         return
 
     if message.reply_to_message and message.reply_to_message.photo:
@@ -328,7 +351,9 @@ def cmd_translate(message):
 
     parts = message.text.split(None, 1)
     if len(parts) < 2:
-        bot.reply_to(message, "Usage: /trans <text>  or reply to a photo with /translate")
+        bot.reply_to(
+            message, "Usage: /trans <text>  or reply to a photo with /translate"
+        )
         return
     result = translate_text(parts[1])
     bot.reply_to(message, result)
@@ -347,7 +372,10 @@ def cmd_start_tracking(message):
     if message.chat.type in ("group", "supergroup"):
         name = message.chat.title or f"Group {message.chat.id}"
         _add_group(message.chat.id, name)
-        bot.reply_to(message, f"✅ This group ({name}, ID: {message.chat.id}) is now being tracked.")
+        bot.reply_to(
+            message,
+            f"✅ This group ({name}, ID: {message.chat.id}) is now being tracked.",
+        )
     else:
         bot.reply_to(message, "ℹ️ This command must be used in a group chat.")
 
@@ -384,19 +412,31 @@ def cmd_remove_group(message):
         return
     parts = message.text.split(None, 1)
     if len(parts) < 2:
-        bot.reply_to(message, "Usage: /remove_group <group_id>\nUse /groups to see all IDs.")
+        bot.reply_to(
+            message, "Usage: /remove_group <group_id>\nUse /groups to see all IDs."
+        )
         return
     try:
         chat_id = int(parts[1].strip())
     except ValueError:
-        bot.reply_to(message, "❌ Invalid group ID. Must be a number (e.g. -1001234567890).")
+        bot.reply_to(
+            message, "❌ Invalid group ID. Must be a number (e.g. -1001234567890)."
+        )
         return
     if str(chat_id) in tracked_groups:
         name = tracked_groups[str(chat_id)].get("name", str(chat_id))
         _remove_group(chat_id)
-        bot.reply_to(message, f"✅ Group *{name}* (`{chat_id}`) removed from tracking list.", parse_mode="Markdown")
+        bot.reply_to(
+            message,
+            f"✅ Group *{name}* (`{chat_id}`) removed from tracking list.",
+            parse_mode="Markdown",
+        )
     else:
-        bot.reply_to(message, f"❌ Group `{chat_id}` is not in the tracking list.", parse_mode="Markdown")
+        bot.reply_to(
+            message,
+            f"❌ Group `{chat_id}` is not in the tracking list.",
+            parse_mode="Markdown",
+        )
 
 
 # ─────────────────────────────────────────────
@@ -469,7 +509,10 @@ def cmd_toggle_trans(message):
     if not _primary_only(message):
         return
     translation_enabled = not translation_enabled
-    bot.reply_to(message, f"Translation is now {'✅ enabled' if translation_enabled else '❌ disabled'}.")
+    bot.reply_to(
+        message,
+        f"Translation is now {'✅ enabled' if translation_enabled else '❌ disabled'}.",
+    )
 
 
 @bot.message_handler(commands=["toggle_broadcast"])
@@ -480,7 +523,10 @@ def cmd_toggle_broadcast(message):
     if not _primary_only(message):
         return
     broadcast_enabled = not broadcast_enabled
-    bot.reply_to(message, f"Broadcast is now {'✅ enabled' if broadcast_enabled else '❌ disabled'}.")
+    bot.reply_to(
+        message,
+        f"Broadcast is now {'✅ enabled' if broadcast_enabled else '❌ disabled'}.",
+    )
 
 
 @bot.message_handler(commands=["toggle_schedule"])
@@ -491,7 +537,10 @@ def cmd_toggle_schedule(message):
     if not _primary_only(message):
         return
     schedule_enabled = not schedule_enabled
-    bot.reply_to(message, f"Scheduling is now {'✅ enabled' if schedule_enabled else '❌ disabled'}.")
+    bot.reply_to(
+        message,
+        f"Scheduling is now {'✅ enabled' if schedule_enabled else '❌ disabled'}.",
+    )
 
 
 @bot.message_handler(commands=["toggle_repeat"])
@@ -502,7 +551,9 @@ def cmd_toggle_repeat(message):
     if not _primary_only(message):
         return
     repeat_enabled = not repeat_enabled
-    bot.reply_to(message, f"Repeat is now {'✅ enabled' if repeat_enabled else '❌ disabled'}.")
+    bot.reply_to(
+        message, f"Repeat is now {'✅ enabled' if repeat_enabled else '❌ disabled'}."
+    )
 
 
 @bot.message_handler(commands=["toggle_public"])
@@ -513,7 +564,10 @@ def cmd_toggle_public(message):
     if not _primary_only(message):
         return
     public_access_enabled = not public_access_enabled
-    bot.reply_to(message, f"Public access is now {'✅ enabled' if public_access_enabled else '🔒 disabled'}.")
+    bot.reply_to(
+        message,
+        f"Public access is now {'✅ enabled' if public_access_enabled else '🔒 disabled'}.",
+    )
 
 
 @bot.message_handler(commands=["lock"])
@@ -672,7 +726,9 @@ def cmd_repeat(message):
 
     if message.reply_to_message and message.reply_to_message.photo:
         photo_file_id = message.reply_to_message.photo[-1].file_id
-        caption = message.reply_to_message.caption or (parts[2] if len(parts) > 2 else "")
+        caption = message.reply_to_message.caption or (
+            parts[2] if len(parts) > 2 else ""
+        )
     elif len(parts) > 2:
         text = parts[2]
     else:
@@ -680,16 +736,32 @@ def cmd_repeat(message):
         return
 
     tid = _new_task_id()
-    _register_task(tid, "repeat", interval_hours=interval_hours, text=text, photo_file_id=photo_file_id, caption=caption)
-    t = threading.Thread(target=_run_repeat, args=(tid, interval_hours, text, photo_file_id, caption), daemon=True)
+    _register_task(
+        tid,
+        "repeat",
+        interval_hours=interval_hours,
+        text=text,
+        photo_file_id=photo_file_id,
+        caption=caption,
+    )
+    t = threading.Thread(
+        target=_run_repeat,
+        args=(tid, interval_hours, text, photo_file_id, caption),
+        daemon=True,
+    )
     t.start()
-    bot.reply_to(message, f"✅ Repeat task #{tid} started — every {interval_hours}h to {len(tracked_groups)} group(s).\nUse /stop_task {tid} to stop it.")
+    bot.reply_to(
+        message,
+        f"✅ Repeat task #{tid} started — every {interval_hours}h to {len(tracked_groups)} group(s).\nUse /stop_task {tid} to stop it.",
+    )
 
 
 # ─────────────────────────────────────────────
 # SCHEDULE TASK
 # ─────────────────────────────────────────────
-def _run_schedule(task_id, scheduled_time_str, text, photo_file_id, caption, photo_path=None):
+def _run_schedule(
+    task_id, scheduled_time_str, text, photo_file_id, caption, photo_path=None
+):
     stop_event = _stop_event_for(task_id)
     while not stop_event.is_set():
         now = datetime.datetime.now()
@@ -699,9 +771,9 @@ def _run_schedule(task_id, scheduled_time_str, text, photo_file_id, caption, pho
             )
         except ValueError:
             try:
-                target = datetime.datetime.strptime(scheduled_time_str, "%H:%M").replace(
-                    year=now.year, month=now.month, day=now.day
-                )
+                target = datetime.datetime.strptime(
+                    scheduled_time_str, "%H:%M"
+                ).replace(year=now.year, month=now.month, day=now.day)
             except ValueError:
                 break
         if target <= now:
@@ -753,7 +825,9 @@ def cmd_schedule(message):
 
     if message.reply_to_message and message.reply_to_message.photo:
         photo_file_id = message.reply_to_message.photo[-1].file_id
-        caption = message.reply_to_message.caption or (parts[3] if len(parts) > 3 else "")
+        caption = message.reply_to_message.caption or (
+            parts[3] if len(parts) > 3 else ""
+        )
     elif len(parts) > 3:
         text = parts[3]
     else:
@@ -761,10 +835,24 @@ def cmd_schedule(message):
         return
 
     tid = _new_task_id()
-    _register_task(tid, "schedule", scheduled_time=scheduled_time_str, text=text, photo_file_id=photo_file_id, caption=caption)
-    t = threading.Thread(target=_run_schedule, args=(tid, scheduled_time_str, text, photo_file_id, caption), daemon=True)
+    _register_task(
+        tid,
+        "schedule",
+        scheduled_time=scheduled_time_str,
+        text=text,
+        photo_file_id=photo_file_id,
+        caption=caption,
+    )
+    t = threading.Thread(
+        target=_run_schedule,
+        args=(tid, scheduled_time_str, text, photo_file_id, caption),
+        daemon=True,
+    )
     t.start()
-    bot.reply_to(message, f"✅ Schedule task #{tid} created — daily at {scheduled_time_str} to {len(tracked_groups)} group(s).\nUse /stop_task {tid} to stop it.")
+    bot.reply_to(
+        message,
+        f"✅ Schedule task #{tid} created — daily at {scheduled_time_str} to {len(tracked_groups)} group(s).\nUse /stop_task {tid} to stop it.",
+    )
 
 
 # ─────────────────────────────────────────────
@@ -798,7 +886,11 @@ def cmd_broadcast(message):
             return
         text = parts[1]
 
-    threading.Thread(target=deliver_to_groups, kwargs={"text": text, "photo_file_id": photo_file_id, "caption": caption}, daemon=True).start()
+    threading.Thread(
+        target=deliver_to_groups,
+        kwargs={"text": text, "photo_file_id": photo_file_id, "caption": caption},
+        daemon=True,
+    ).start()
     bot.reply_to(message, f"📢 Broadcasting to {len(tracked_groups)} group(s)...")
 
 
@@ -818,7 +910,9 @@ def cmd_stop_task(message):
         return
     tid = parts[1].strip()
     if tid not in active_tasks:
-        bot.reply_to(message, f"❌ Task #{tid} not found. Use /task_list to see active tasks.")
+        bot.reply_to(
+            message, f"❌ Task #{tid} not found. Use /task_list to see active tasks."
+        )
         return
     task_type = active_tasks[tid].get("type", "task")
     if tid in task_stop_events:
@@ -852,7 +946,11 @@ def cmd_task_list(message):
             else:
                 detail = f"daily at {task.get('scheduled_time', '?')}"
 
-            content = "📷 photo" if task.get("photo_file_id") else f"💬 {str(task.get('text', ''))[:40]}"
+            content = (
+                "📷 photo"
+                if task.get("photo_file_id")
+                else f"💬 {str(task.get('text', ''))[:40]}"
+            )
 
             tg = task.get("targeted_groups") or []
             if tg:
@@ -864,7 +962,9 @@ def cmd_task_list(message):
             else:
                 groups_str = f"📡 All {len(tracked_groups)} group(s)"
 
-            lines.append(f"\n{emoji} Task #{tid} — {detail}\n   {content}\n   {groups_str}\n   Stop: /stop_task {tid}")
+            lines.append(
+                f"\n{emoji} Task #{tid} — {detail}\n   {content}\n   {groups_str}\n   Stop: /stop_task {tid}"
+            )
         except Exception as e:
             lines.append(f"\n⚠️ Task #{tid} (error reading: {e})")
 
@@ -902,14 +1002,26 @@ def restore_tasks():
         task_id = task.get("id")
         if ttype == "repeat":
             interval_hours = task.get("interval_hours", 1)
-            t = threading.Thread(target=_run_repeat, args=(task_id, interval_hours, text, photo_file_id, caption), kwargs={"photo_path": photo_path}, daemon=True)
+            t = threading.Thread(
+                target=_run_repeat,
+                args=(task_id, interval_hours, text, photo_file_id, caption),
+                kwargs={"photo_path": photo_path},
+                daemon=True,
+            )
             t.start()
             print(f"[INFO] Restored repeat task #{task_id} (every {interval_hours}h)")
         elif ttype == "schedule":
             scheduled_time = task.get("scheduled_time")
-            t = threading.Thread(target=_run_schedule, args=(task_id, scheduled_time, text, photo_file_id, caption), kwargs={"photo_path": photo_path}, daemon=True)
+            t = threading.Thread(
+                target=_run_schedule,
+                args=(task_id, scheduled_time, text, photo_file_id, caption),
+                kwargs={"photo_path": photo_path},
+                daemon=True,
+            )
             t.start()
-            print(f"[INFO] Restored schedule task #{task_id} (daily at {scheduled_time})")
+            print(
+                f"[INFO] Restored schedule task #{task_id} (daily at {scheduled_time})"
+            )
 
 
 # ─────────────────────────────────────────────
@@ -933,15 +1045,18 @@ class InternalAPIHandler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path == "/status":
-            self._send(200, {
-                "tracked_groups": len(tracked_groups),
-                "active_tasks": len(active_tasks),
-                "public_access": public_access_enabled,
-                "translation": translation_enabled,
-                "broadcast": broadcast_enabled,
-                "schedule": schedule_enabled,
-                "repeat": repeat_enabled,
-            })
+            self._send(
+                200,
+                {
+                    "tracked_groups": len(tracked_groups),
+                    "active_tasks": len(active_tasks),
+                    "public_access": public_access_enabled,
+                    "translation": translation_enabled,
+                    "broadcast": broadcast_enabled,
+                    "schedule": schedule_enabled,
+                    "repeat": repeat_enabled,
+                },
+            )
         elif self.path == "/groups":
             self._send(200, list(tracked_groups.values()))
         elif self.path == "/tasks":
@@ -962,11 +1077,18 @@ class InternalAPIHandler(BaseHTTPRequestHandler):
             tg = body.get("targeted_groups") or None
             threading.Thread(
                 target=deliver_to_groups,
-                kwargs={"text": text, "photo_file_id": photo_file_id, "photo_path": photo_path,
-                        "caption": caption, "targeted_group_ids": tg},
+                kwargs={
+                    "text": text,
+                    "photo_file_id": photo_file_id,
+                    "photo_path": photo_path,
+                    "caption": caption,
+                    "targeted_group_ids": tg,
+                },
                 daemon=True,
             ).start()
-            self._send(200, {"ok": True, "targets": len(tg) if tg else len(tracked_groups)})
+            self._send(
+                200, {"ok": True, "targets": len(tg) if tg else len(tracked_groups)}
+            )
 
         elif self.path == "/tasks":
             body = self._read_body()
@@ -991,7 +1113,8 @@ class InternalAPIHandler(BaseHTTPRequestHandler):
 
             tid = _new_task_id()
             _register_task(
-                tid, task_type,
+                tid,
+                task_type,
                 interval_hours=float(interval_hours) if interval_hours else None,
                 scheduled_time=scheduled_time,
                 text=text or None,
@@ -1128,8 +1251,8 @@ class HealthHandler(BaseHTTPRequestHandler):
 
 
 def start_health_server():
-    server = HTTPServer(("0.0.0.0", 8000), HealthHandler)
-    server.serve_forever()
+    PORT = int(os.environ.get("PORT", 8000))
+    server = HTTPServer(("0.0.0.0", PORT), HealthHandler)
 
 
 # ─────────────────────────────────────────────
