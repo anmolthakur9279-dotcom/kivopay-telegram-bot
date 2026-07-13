@@ -327,6 +327,66 @@ textarea{resize:vertical;min-height:72px}
 </main>
 <div class="toast" id="toast"></div>
 
+<!-- ── Edit Task Modal ─────────────────────────────────────────────────── -->
+<div id="edit-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:200;overflow-y:auto;padding:24px 16px">
+  <div style="background:#1a1d27;border:1px solid #2a2d3a;border-radius:12px;max-width:520px;margin:0 auto;overflow:hidden">
+    <div style="padding:16px 20px;border-bottom:1px solid #2a2d3a;display:flex;align-items:center;justify-content:space-between">
+      <span style="font-weight:700;font-size:1rem">✏️ Edit Task <span id="em-tid" style="color:#64748b;font-size:.85rem"></span></span>
+      <button onclick="closeEditModal()" style="background:none;border:none;color:#94a3b8;font-size:1.3rem;cursor:pointer;line-height:1">×</button>
+    </div>
+    <div style="padding:20px">
+      <input type="hidden" id="em-id"/>
+      <input type="hidden" id="em-type"/>
+
+      <!-- Type badge (read-only) -->
+      <div style="margin-bottom:14px">
+        <span class="field-label" style="display:block;color:#94a3b8;font-size:.75rem;font-weight:500;text-transform:uppercase;letter-spacing:.04em;margin-bottom:5px">Task Type</span>
+        <span id="em-type-badge" style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:20px;font-size:.75rem;font-weight:600;background:#1e3a5f;color:#60a5fa"></span>
+      </div>
+
+      <!-- Interval / Schedule time -->
+      <div id="em-repeat-wrap" style="display:none;margin-bottom:14px">
+        <label class="field-label" style="display:block;color:#94a3b8;font-size:.75rem;font-weight:500;text-transform:uppercase;letter-spacing:.04em;margin-bottom:5px">Repeat every (hours)</label>
+        <input type="number" id="em-hours" min="0.1" step="0.5" style="width:100%;background:#0f1117;border:1px solid #2a2d3a;border-radius:7px;color:#e2e8f0;font-size:.875rem;padding:9px 12px;outline:none"/>
+      </div>
+      <div id="em-schedule-wrap" style="display:none;margin-bottom:14px">
+        <label class="field-label" style="display:block;color:#94a3b8;font-size:.75rem;font-weight:500;text-transform:uppercase;letter-spacing:.04em;margin-bottom:5px">Daily send time</label>
+        <input type="time" id="em-time" style="width:100%;background:#0f1117;border:1px solid #2a2d3a;border-radius:7px;color:#e2e8f0;font-size:.875rem;padding:9px 12px;outline:none"/>
+      </div>
+
+      <!-- Message -->
+      <div style="margin-bottom:14px">
+        <label class="field-label" style="display:block;color:#94a3b8;font-size:.75rem;font-weight:500;text-transform:uppercase;letter-spacing:.04em;margin-bottom:5px">Message</label>
+        <textarea id="em-text" style="width:100%;background:#0f1117;border:1px solid #2a2d3a;border-radius:7px;color:#e2e8f0;font-size:.875rem;padding:9px 12px;outline:none;resize:vertical;min-height:72px;font-family:inherit"></textarea>
+      </div>
+
+      <!-- Image -->
+      <div style="margin-bottom:14px">
+        <label class="field-label" style="display:block;color:#94a3b8;font-size:.75rem;font-weight:500;text-transform:uppercase;letter-spacing:.04em;margin-bottom:5px">Replace Image (optional)</label>
+        <div style="display:flex;align-items:center;gap:8px">
+          <div class="file-input-wrap">
+            <div class="file-btn">📎 Choose Image<input type="file" id="em-file" accept="image/*" onchange="onEmFile(this)"/></div>
+          </div>
+          <img id="em-preview" class="preview-img"/>
+          <span id="em-file-name" style="color:#64748b;font-size:.75rem"></span>
+        </div>
+      </div>
+
+      <!-- Target groups -->
+      <div style="margin-bottom:18px">
+        <label class="field-label" style="display:block;color:#94a3b8;font-size:.75rem;font-weight:500;text-transform:uppercase;letter-spacing:.04em;margin-bottom:5px">Target Groups</label>
+        <div id="em-groups" style="display:flex;flex-wrap:wrap;gap:5px"></div>
+        <p style="color:#4b5563;font-size:.72rem;margin-top:5px">No groups checked = send to all tracked groups</p>
+      </div>
+
+      <div style="display:flex;gap:10px">
+        <button class="btn btn-primary" id="em-save-btn" onclick="submitEdit()">💾 Save &amp; Reload</button>
+        <button class="btn btn-ghost" onclick="closeEditModal()">Cancel</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
 let allGroups = [];
 let bcAllSel = false;
@@ -424,6 +484,7 @@ async function loadTasks(){
         <div class="group-chips">\${chips||'<span style="color:#4b5563;font-size:.72rem">No groups tracked</span>'}</div>
         <div class="task-actions">
           <button class="btn btn-sm btn-primary" onclick="saveTaskGroups(\${t.id})">💾 Save Groups</button>
+          <button class="btn btn-sm btn-ghost" onclick="openEditModal(\${JSON.stringify(t).replace(/"/g,'&quot;')})">✏️ Edit Task</button>
           <button class="btn btn-sm btn-danger" onclick="deleteTask(\${t.id})">🗑️ Delete / Stop</button>
         </div>
       </div>\`;
@@ -448,6 +509,102 @@ async function deleteTask(tid){
     else toast('Failed to delete task','err');
   }catch{toast('Network error','err');}
 }
+
+// ── Edit Modal ──
+function openEditModal(task){
+  const t=typeof task==='string'?JSON.parse(task):task;
+  document.getElementById('em-id').value=t.id;
+  document.getElementById('em-type').value=t.type;
+  document.getElementById('em-tid').textContent='#'+t.id;
+  const badge=document.getElementById('em-type-badge');
+  badge.textContent=t.type==='repeat'?'🔁 repeat':'⏰ schedule';
+  badge.style.background=t.type==='repeat'?'#1e3a5f':'#2d1f3f';
+  badge.style.color=t.type==='repeat'?'#60a5fa':'#a78bfa';
+
+  // Timing fields
+  document.getElementById('em-repeat-wrap').style.display=t.type==='repeat'?'block':'none';
+  document.getElementById('em-schedule-wrap').style.display=t.type==='schedule'?'block':'none';
+  if(t.type==='repeat')document.getElementById('em-hours').value=t.interval_hours||1;
+  if(t.type==='schedule'){
+    // Convert "09:30 AM" → "09:30" for <input type=time>
+    let tv=t.scheduled_time||'';
+    try{const d=new Date('1970-01-01 '+tv);if(!isNaN(d))tv=d.toTimeString().slice(0,5);}catch{}
+    document.getElementById('em-time').value=tv;
+  }
+
+  document.getElementById('em-text').value=t.text||'';
+
+  // Clear image fields
+  document.getElementById('em-file').value='';
+  document.getElementById('em-file-name').textContent='';
+  const prev=document.getElementById('em-preview');prev.src='';prev.style.display='none';
+
+  // Group checkboxes
+  const tgList=(t.targeted_groups||[]).map(String);
+  const el=document.getElementById('em-groups');
+  if(!allGroups.length){el.innerHTML='<span style="color:#4b5563;font-size:.72rem">No groups tracked</span>';}
+  else el.innerHTML=allGroups.map(g=>{
+    const chk=tgList.includes(String(g.id))?'checked':'';
+    return \`<label class="chip"><input type="checkbox" class="em-grp-cb" value="\${g.id}" \${chk}>\${esc(g.name)}</label>\`;
+  }).join('');
+
+  document.getElementById('edit-overlay').style.display='block';
+  document.body.style.overflow='hidden';
+}
+
+function closeEditModal(){
+  document.getElementById('edit-overlay').style.display='none';
+  document.body.style.overflow='';
+}
+
+function onEmFile(inp){
+  const f=inp.files[0];if(!f)return;
+  document.getElementById('em-file-name').textContent=f.name;
+  const prev=document.getElementById('em-preview');
+  prev.src=URL.createObjectURL(f);prev.style.display='block';
+}
+
+async function submitEdit(){
+  const tid=document.getElementById('em-id').value;
+  const ttype=document.getElementById('em-type').value;
+  const text=document.getElementById('em-text').value.trim();
+  const file=document.getElementById('em-file').files[0];
+  const checked=document.querySelectorAll('.em-grp-cb:checked');
+  const tg=Array.from(checked).map(b=>b.value);
+
+  const fd=new FormData();
+  fd.append('text',text);
+  fd.append('targeted_groups',JSON.stringify(tg));
+  if(file)fd.append('image',file);
+  if(ttype==='repeat'){
+    const h=document.getElementById('em-hours').value;
+    if(!h||isNaN(parseFloat(h))){toast('Enter a valid interval','err');return;}
+    fd.append('interval_hours',h);
+  }else{
+    let tv=document.getElementById('em-time').value;
+    if(!tv){toast('Enter a valid time','err');return;}
+    // Convert HH:MM to "HH:MM AM/PM" for Python
+    const [hh,mm]=tv.split(':').map(Number);
+    const ampm=hh>=12?'PM':'AM';
+    const h12=hh===0?12:hh>12?hh-12:hh;
+    tv=String(h12).padStart(2,'0')+':'+String(mm).padStart(2,'0')+' '+ampm;
+    fd.append('scheduled_time',tv);
+  }
+
+  setBtn('em-save-btn',true,'Save & Reload');
+  try{
+    const r=await fetch('/api/admin/tasks/'+tid,{method:'PUT',body:fd});
+    const d=await r.json();
+    if(r.ok){toast('Task #'+tid+' updated & reloaded');closeEditModal();loadTasks();loadStatus();}
+    else toast(d.error||'Failed to update task','err');
+  }catch{toast('Network error','err');}
+  setBtn('em-save-btn',false,'Save & Reload');
+}
+
+// Close overlay when clicking backdrop
+document.getElementById('edit-overlay').addEventListener('click',function(e){
+  if(e.target===this)closeEditModal();
+});
 
 // ── Broadcast ──
 function onBcFile(inp){
@@ -578,6 +735,36 @@ router.patch("/api/admin/tasks/:id", requireAuthApi, async (req, res) => {
     res.status(503).json({ error: "Bot unreachable" });
   }
 });
+
+// ─── API: edit task (hot-reload) ──────────────────────────────────────────────
+router.put(
+  "/api/admin/tasks/:id",
+  requireAuthApi,
+  upload.single("image"),
+  async (req: Request, res: Response) => {
+    const { text, interval_hours, scheduled_time, targeted_groups: tgRaw } = req.body as Record<string, string>;
+    const photoPath = (req.file as Express.Multer.File | undefined)?.path;
+    const tg = tgRaw ? JSON.parse(tgRaw) : undefined;
+
+    const payload: Record<string, any> = {};
+    if (text !== undefined) payload.text = text || null;
+    if (photoPath) payload.photo_path = photoPath;
+    if (interval_hours) payload.interval_hours = parseFloat(interval_hours);
+    if (scheduled_time) payload.scheduled_time = scheduled_time;
+    if (tg !== undefined) payload.targeted_groups = tg;
+
+    try {
+      const r = await pyFetch(`/tasks/${req.params.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      res.status(r.status).json(await r.json());
+    } catch {
+      res.status(503).json({ error: "Bot unreachable" });
+    }
+  },
+);
 
 // ─── API: delete task ─────────────────────────────────────────────────────────
 router.delete("/api/admin/tasks/:id", requireAuthApi, async (req, res) => {

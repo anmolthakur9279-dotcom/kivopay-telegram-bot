@@ -635,8 +635,11 @@ def _run_repeat(task_id, interval_hours, text, photo_file_id, caption, photo_pat
             targeted_group_ids=tg if tg else None,
         )
         stop_event.wait(timeout=interval_hours * 3600)
-    _unregister_task(task_id)
-    task_stop_events.pop(str(task_id), None)
+    # Only clean up if we're still the owner — a PUT edit may have replaced us
+    tid = str(task_id)
+    if task_stop_events.get(tid) is stop_event:
+        _unregister_task(task_id)
+        task_stop_events.pop(tid, None)
 
 
 @bot.message_handler(commands=["repeat"])
@@ -717,8 +720,11 @@ def _run_schedule(task_id, scheduled_time_str, text, photo_file_id, caption, pho
             caption=caption,
             targeted_group_ids=tg if tg else None,
         )
-    _unregister_task(task_id)
-    task_stop_events.pop(str(task_id), None)
+    # Only clean up if we're still the owner — a PUT edit may have replaced us
+    tid = str(task_id)
+    if task_stop_events.get(tid) is stop_event:
+        _unregister_task(task_id)
+        task_stop_events.pop(tid, None)
 
 
 @bot.message_handler(commands=["schedule"])
@@ -1021,6 +1027,67 @@ class InternalAPIHandler(BaseHTTPRequestHandler):
                 self._send(200, {"ok": True})
             else:
                 self._send(404, {"error": "task not found"})
+        else:
+            self._send(404, {"error": "not found"})
+
+    def do_PUT(self):
+        """Hot-reload a task: stop the running thread, update data, restart thread."""
+        if self.path.startswith("/tasks/"):
+            tid = self.path.split("/tasks/")[1]
+            if tid not in active_tasks:
+                self._send(404, {"error": "task not found"})
+                return
+            body = self._read_body()
+            task = active_tasks[tid]
+
+            # Stop the currently-running thread (it will NOT unregister because
+            # we remove the event from task_stop_events first — ownership check)
+            old_event = task_stop_events.pop(tid, None)
+            if old_event:
+                old_event.set()
+
+            # Apply updates to the stored task record
+            if "text" in body:
+                task["text"] = body["text"] or None
+            if "photo_path" in body:
+                task["photo_path"] = body["photo_path"] or None
+            if "interval_hours" in body and body["interval_hours"] is not None:
+                task["interval_hours"] = float(body["interval_hours"])
+            if "scheduled_time" in body and body["scheduled_time"]:
+                task["scheduled_time"] = body["scheduled_time"]
+            if "targeted_groups" in body:
+                task["targeted_groups"] = body["targeted_groups"] or []
+            save_tasks()
+
+            # Restart background thread with updated data
+            task_id = task["id"]
+            ttype = task["type"]
+            text = task.get("text")
+            photo_file_id = task.get("photo_file_id")
+            photo_path = task.get("photo_path")
+            caption = task.get("caption")
+
+            if ttype == "repeat":
+                interval_hours = task.get("interval_hours", 1)
+                t = threading.Thread(
+                    target=_run_repeat,
+                    args=(task_id, interval_hours, text, photo_file_id, caption),
+                    kwargs={"photo_path": photo_path},
+                    daemon=True,
+                )
+            elif ttype == "schedule":
+                scheduled_time = task.get("scheduled_time")
+                t = threading.Thread(
+                    target=_run_schedule,
+                    args=(task_id, scheduled_time, text, photo_file_id, caption),
+                    kwargs={"photo_path": photo_path},
+                    daemon=True,
+                )
+            else:
+                self._send(400, {"error": "unknown task type"})
+                return
+            t.start()
+            self._send(200, {"ok": True, "task_id": task_id})
         else:
             self._send(404, {"error": "not found"})
 
