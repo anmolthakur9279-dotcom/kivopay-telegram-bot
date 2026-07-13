@@ -1,0 +1,32 @@
+Please implement these combined structural updates, group mapping capabilities, and security patches into the bot framework and backend dashboard panel immediately:
+
+################################################################################
+1. SECURE ADMIN LOGIN GATE (PASSWORD-BASED AUTHENTICATION)
+################################################################################
+- Restrict the '/admin' webpage dashboard with a strict session/cookie-based authentication gate. 
+- Serve a clean login form interface at '/login'. Redirect any unauthenticated requests targeting '/admin' or backend management endpoints directly to '/login'.
+- Completely disable all public registration, signup forms, or self-approval options. No external user can create or approve an ID.
+- Hardcode the system initialization password securely in the environment variables, ensuring that ONLY the pre-defined Primary Admin has the authorization to inject or provision operational dashboard access logs inside the local database.
+- Ensure all backend API routes for configuration updates, task saving, and broadcasting strictly validate the admin's session before processing.
+
+################################################################################
+2. GROUP NAME TRACKING & DATA MAPPING SCHEMA
+################################################################################
+- Modify the database schema. When the bot is added to a group, it must capture and store the actual human-readable 'Group Name' along with the Group ID.
+- On the dashboard interface, render the clean Group Names instead of cryptic IDs, paired with their respective operational status layout controls.
+
+################################################################################
+3. DYNAMIC TASK-TO-GROUP MAPPING & TARGETED BROADCASTING
+################################################################################
+- Update the local task database structure. Every scheduled or repeated task must maintain its own custom 'targeted_groups' array inside the JSON data.
+- In the '/admin' dashboard UI, for every active task listed, dynamically populate a list of all tracked groups by their clean Group Names with an explicit checkbox next to each.
+- Allow Primary and Secondary admins to select/unselect groups per individual task. Saving these configuration parameters must instantly overwrite that specific task's 'targeted_groups' array inside the database.
+- When any background scheduler executes a recurring runner, it must evaluate this array map and deliver the message payload ONLY to the groups that are currently checked/selected for that specific task.
+- For manual targeted broadcasts from the web control panel, add a feature to select specific groups, ensuring the backend logic dynamically filters the broadcast array to target ONLY the active selections.
+
+################################################################################
+4. TASK MONITORING ENGINE REPAIR
+################################################################################
+- Fix the core task monitoring block inside main.py so that the `/tasks` list command accurately loops through active scheduled intervals and prints them clearly to the admin instead of failing or throwing an error block. If the queue is empty, cleanly return "No active tasks".
+
+Compile all combined updates, sync the database mapping layer securely, and restart the dual-server execution setups immediately.

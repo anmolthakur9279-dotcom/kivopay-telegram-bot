@@ -8,7 +8,7 @@ from google import genai as genai_client
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 # ─────────────────────────────────────────────
-# CONFIGb
+# CONFIG
 # ─────────────────────────────────────────────
 BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY", "")
@@ -49,12 +49,21 @@ def _save_json(path, data):
         print(f"[WARN] Could not save {path}: {e}")
 
 
+def _load_groups():
+    """Load groups as dict {str(chat_id): {id, name}}. Migrates old list format."""
+    raw = _load_json(GROUPS_FILE, {})
+    if isinstance(raw, list):
+        # Migrate from old set/list format
+        return {str(cid): {"id": cid, "name": f"Group {cid}"} for cid in raw}
+    return raw
+
+
 blacklisted_users = set(_load_json(BLACKLIST_FILE, []))
-tracked_groups = set(_load_json(GROUPS_FILE, []))
+tracked_groups = _load_groups()   # {str(chat_id): {"id": int, "name": str}}
 tasks_data = _load_json(TASKS_FILE, {"counter": 0, "tasks": {}})
 task_counter = tasks_data.get("counter", 0)
-active_tasks = tasks_data.get("tasks", {})  # {str(task_id): task_dict}
-task_stop_events = {}  # {str(task_id): threading.Event}
+active_tasks = tasks_data.get("tasks", {})   # {str(task_id): task_dict}
+task_stop_events = {}                         # {str(task_id): threading.Event}
 
 
 def save_blacklist():
@@ -62,11 +71,25 @@ def save_blacklist():
 
 
 def save_groups():
-    _save_json(GROUPS_FILE, list(tracked_groups))
+    _save_json(GROUPS_FILE, tracked_groups)
 
 
 def save_tasks():
     _save_json(TASKS_FILE, {"counter": task_counter, "tasks": active_tasks})
+
+
+def _add_group(chat_id, name):
+    """Register or update a group in tracked_groups."""
+    tracked_groups[str(chat_id)] = {
+        "id": chat_id,
+        "name": name or f"Group {chat_id}",
+    }
+    save_groups()
+
+
+def _remove_group(chat_id):
+    tracked_groups.pop(str(chat_id), None)
+    save_groups()
 
 
 # ─────────────────────────────────────────────
@@ -101,7 +124,6 @@ def translate_image(file_id, caption):
         return "❌ Translation service unavailable."
     try:
         import urllib.request
-        import io
         from google.genai import types as genai_types
 
         bot_file = bot.get_file(file_id)
@@ -135,23 +157,16 @@ bot = telebot.TeleBot(BOT_TOKEN, parse_mode=None)
 # SECURITY INTERCEPTOR
 # ─────────────────────────────────────────────
 def security_check(message):
-    """Returns True if the message should be processed, False if blocked."""
     username = (message.from_user.username or "").lower()
     if username in blacklisted_users:
         try:
-            bot.reply_to(
-                message,
-                "❌ You have been banned from using this bot by the administrator.",
-            )
+            bot.reply_to(message, "❌ You have been banned from using this bot by the administrator.")
         except Exception:
             pass
         return False
     if not public_access_enabled and username not in ALLOWED_ADMINS:
         try:
-            bot.reply_to(
-                message,
-                "🔒 This bot is currently locked by the administrator. Only authorized users can access it.",
-            )
+            bot.reply_to(message, "🔒 This bot is currently locked by the administrator. Only authorized users can access it.")
         except Exception:
             pass
         return False
@@ -174,15 +189,26 @@ def on_new_member(message):
     if message.new_chat_members:
         for member in message.new_chat_members:
             if member.id == bot.get_me().id:
-                tracked_groups.add(message.chat.id)
-                save_groups()
+                name = message.chat.title or message.chat.username or f"Group {message.chat.id}"
+                _add_group(message.chat.id, name)
 
 
 # ─────────────────────────────────────────────
 # BROADCAST DELIVERY
 # ─────────────────────────────────────────────
-def deliver_to_groups(text=None, photo_file_id=None, caption=None):
-    for chat_id in list(tracked_groups):
+def deliver_to_groups(text=None, photo_file_id=None, caption=None, targeted_group_ids=None):
+    """Send to specified groups, or all tracked groups if targeted_group_ids is None/empty."""
+    if targeted_group_ids:
+        # Only send to groups that are still tracked
+        target_ids = [
+            info["id"]
+            for cid, info in tracked_groups.items()
+            if cid in [str(g) for g in targeted_group_ids]
+        ]
+    else:
+        target_ids = [info["id"] for info in tracked_groups.values()]
+
+    for chat_id in target_ids:
         try:
             if photo_file_id:
                 bot.send_photo(chat_id, photo_file_id, caption=caption)
@@ -200,11 +226,9 @@ def cmd_start(message):
     if not security_check(message):
         return
     if message.chat.type in ("group", "supergroup"):
-        tracked_groups.add(message.chat.id)
-        save_groups()
-    bot.reply_to(
-        message, "👋 Hello! I'm online and ready. Use /help to see available commands."
-    )
+        name = message.chat.title or f"Group {message.chat.id}"
+        _add_group(message.chat.id, name)
+    bot.reply_to(message, "👋 Hello! I'm online and ready. Use /help to see available commands.")
 
 
 # ─────────────────────────────────────────────
@@ -233,10 +257,11 @@ def cmd_help(message):
         "/broadcast <msg> — Send message to all groups\n"
         "/repeat <hours> <msg> — Repeat message every N hours\n"
         "/schedule <HH:MM AM/PM> <msg> — Schedule daily message\n"
-        "/stop\\_rpt <ID> — Stop a repeat task\n"
-        "/stop\\_schdl <ID> — Stop a schedule task\n"
+        "/stop\\_task <ID> — Stop any task by ID\n"
         "/task\\_list — List all active tasks\n"
         "/clear\\_tasks — Clear all tasks\n"
+        "/groups — List tracked groups\n"
+        "/remove\\_group <id> — Remove a group from tracking\n"
         "/start\\_tracking — Add this group to tracking list\n"
     )
 
@@ -277,12 +302,9 @@ def cmd_translate(message):
     if not security_check(message):
         return
     if not translation_enabled:
-        bot.reply_to(
-            message, "🔇 Translation is currently disabled by the administrator."
-        )
+        bot.reply_to(message, "🔇 Translation is currently disabled by the administrator.")
         return
 
-    # Handle reply to photo
     if message.reply_to_message and message.reply_to_message.photo:
         photo = message.reply_to_message.photo[-1]
         cap = message.reply_to_message.caption or ""
@@ -290,12 +312,9 @@ def cmd_translate(message):
         bot.reply_to(message, result)
         return
 
-    # Handle text argument
     parts = message.text.split(None, 1)
     if len(parts) < 2:
-        bot.reply_to(
-            message, "Usage: /trans <text>  or reply to a photo with /translate"
-        )
+        bot.reply_to(message, "Usage: /trans <text>  or reply to a photo with /translate")
         return
     result = translate_text(parts[1])
     bot.reply_to(message, result)
@@ -312,11 +331,9 @@ def cmd_start_tracking(message):
         bot.reply_to(message, "⛔ Admin only.")
         return
     if message.chat.type in ("group", "supergroup"):
-        tracked_groups.add(message.chat.id)
-        save_groups()
-        bot.reply_to(
-            message, f"✅ This group (ID: {message.chat.id}) is now being tracked."
-        )
+        name = message.chat.title or f"Group {message.chat.id}"
+        _add_group(message.chat.id, name)
+        bot.reply_to(message, f"✅ This group ({name}, ID: {message.chat.id}) is now being tracked.")
     else:
         bot.reply_to(message, "ℹ️ This command must be used in a group chat.")
 
@@ -335,13 +352,9 @@ def cmd_groups(message):
         bot.reply_to(message, "📭 No groups are currently being tracked.")
         return
     lines = [f"📋 *Tracked Groups ({len(tracked_groups)}):*\n"]
-    for idx, chat_id in enumerate(tracked_groups, start=1):
-        try:
-            chat = bot.get_chat(chat_id)
-            name = chat.title or chat.username or "Unknown"
-        except Exception:
-            name = "Unknown / Bot removed"
-        lines.append(f"{idx}. {name}\n   `{chat_id}`")
+    for idx, (cid, info) in enumerate(tracked_groups.items(), start=1):
+        name = info.get("name", "Unknown")
+        lines.append(f"{idx}. {name}\n   `{cid}`")
     bot.reply_to(message, "\n".join(lines), parse_mode="Markdown")
 
 
@@ -357,31 +370,19 @@ def cmd_remove_group(message):
         return
     parts = message.text.split(None, 1)
     if len(parts) < 2:
-        bot.reply_to(
-            message, "Usage: /remove_group <group_id>\nUse /groups to see all IDs."
-        )
+        bot.reply_to(message, "Usage: /remove_group <group_id>\nUse /groups to see all IDs.")
         return
     try:
         chat_id = int(parts[1].strip())
     except ValueError:
-        bot.reply_to(
-            message, "❌ Invalid group ID. Must be a number (e.g. -1001234567890)."
-        )
+        bot.reply_to(message, "❌ Invalid group ID. Must be a number (e.g. -1001234567890).")
         return
-    if chat_id in tracked_groups:
-        tracked_groups.discard(chat_id)
-        save_groups()
-        bot.reply_to(
-            message,
-            f"✅ Group `{chat_id}` removed from tracking list.",
-            parse_mode="Markdown",
-        )
+    if str(chat_id) in tracked_groups:
+        name = tracked_groups[str(chat_id)].get("name", str(chat_id))
+        _remove_group(chat_id)
+        bot.reply_to(message, f"✅ Group *{name}* (`{chat_id}`) removed from tracking list.", parse_mode="Markdown")
     else:
-        bot.reply_to(
-            message,
-            f"❌ Group `{chat_id}` is not in the tracking list.",
-            parse_mode="Markdown",
-        )
+        bot.reply_to(message, f"❌ Group `{chat_id}` is not in the tracking list.", parse_mode="Markdown")
 
 
 # ─────────────────────────────────────────────
@@ -454,10 +455,7 @@ def cmd_toggle_trans(message):
     if not _primary_only(message):
         return
     translation_enabled = not translation_enabled
-    bot.reply_to(
-        message,
-        f"Translation is now {'✅ enabled' if translation_enabled else '❌ disabled'}.",
-    )
+    bot.reply_to(message, f"Translation is now {'✅ enabled' if translation_enabled else '❌ disabled'}.")
 
 
 @bot.message_handler(commands=["toggle_broadcast"])
@@ -468,10 +466,7 @@ def cmd_toggle_broadcast(message):
     if not _primary_only(message):
         return
     broadcast_enabled = not broadcast_enabled
-    bot.reply_to(
-        message,
-        f"Broadcast is now {'✅ enabled' if broadcast_enabled else '❌ disabled'}.",
-    )
+    bot.reply_to(message, f"Broadcast is now {'✅ enabled' if broadcast_enabled else '❌ disabled'}.")
 
 
 @bot.message_handler(commands=["toggle_schedule"])
@@ -482,10 +477,7 @@ def cmd_toggle_schedule(message):
     if not _primary_only(message):
         return
     schedule_enabled = not schedule_enabled
-    bot.reply_to(
-        message,
-        f"Scheduling is now {'✅ enabled' if schedule_enabled else '❌ disabled'}.",
-    )
+    bot.reply_to(message, f"Scheduling is now {'✅ enabled' if schedule_enabled else '❌ disabled'}.")
 
 
 @bot.message_handler(commands=["toggle_repeat"])
@@ -496,9 +488,7 @@ def cmd_toggle_repeat(message):
     if not _primary_only(message):
         return
     repeat_enabled = not repeat_enabled
-    bot.reply_to(
-        message, f"Repeat is now {'✅ enabled' if repeat_enabled else '❌ disabled'}."
-    )
+    bot.reply_to(message, f"Repeat is now {'✅ enabled' if repeat_enabled else '❌ disabled'}.")
 
 
 @bot.message_handler(commands=["toggle_public"])
@@ -509,10 +499,7 @@ def cmd_toggle_public(message):
     if not _primary_only(message):
         return
     public_access_enabled = not public_access_enabled
-    bot.reply_to(
-        message,
-        f"Public access is now {'✅ enabled' if public_access_enabled else '🔒 disabled'}.",
-    )
+    bot.reply_to(message, f"Public access is now {'✅ enabled' if public_access_enabled else '🔒 disabled'}.")
 
 
 @bot.message_handler(commands=["lock"])
@@ -586,6 +573,7 @@ def _register_task(
     text=None,
     photo_file_id=None,
     caption=None,
+    targeted_groups=None,
 ):
     tid = str(task_id)
     active_tasks[tid] = {
@@ -596,6 +584,7 @@ def _register_task(
         "text": text,
         "photo_file_id": photo_file_id,
         "caption": caption,
+        "targeted_groups": targeted_groups or [],  # [] = broadcast to ALL groups
     }
     save_tasks()
 
@@ -619,7 +608,15 @@ def _stop_event_for(task_id):
 def _run_repeat(task_id, interval_hours, text, photo_file_id, caption):
     stop_event = _stop_event_for(task_id)
     while not stop_event.is_set():
-        deliver_to_groups(text=text, photo_file_id=photo_file_id, caption=caption)
+        # Always re-read targeted_groups from active_tasks so dashboard updates take effect
+        task = active_tasks.get(str(task_id), {})
+        tg = task.get("targeted_groups") or []
+        deliver_to_groups(
+            text=text,
+            photo_file_id=photo_file_id,
+            caption=caption,
+            targeted_group_ids=tg if tg else None,
+        )
         stop_event.wait(timeout=interval_hours * 3600)
     _unregister_task(task_id)
     task_stop_events.pop(str(task_id), None)
@@ -639,11 +636,9 @@ def cmd_repeat(message):
         bot.reply_to(message, "⚠️ No groups are being tracked yet.")
         return
 
-    # Parse: /repeat <hours> <message>  or reply to photo
     photo_file_id = None
     caption = None
     text = None
-    interval_hours = None
 
     parts = message.text.split(None, 2)
     if len(parts) < 2:
@@ -657,9 +652,7 @@ def cmd_repeat(message):
 
     if message.reply_to_message and message.reply_to_message.photo:
         photo_file_id = message.reply_to_message.photo[-1].file_id
-        caption = message.reply_to_message.caption or (
-            parts[2] if len(parts) > 2 else ""
-        )
+        caption = message.reply_to_message.caption or (parts[2] if len(parts) > 2 else "")
     elif len(parts) > 2:
         text = parts[2]
     else:
@@ -667,31 +660,16 @@ def cmd_repeat(message):
         return
 
     tid = _new_task_id()
-    _register_task(
-        tid,
-        "repeat",
-        interval_hours=interval_hours,
-        text=text,
-        photo_file_id=photo_file_id,
-        caption=caption,
-    )
-    t = threading.Thread(
-        target=_run_repeat,
-        args=(tid, interval_hours, text, photo_file_id, caption),
-        daemon=True,
-    )
+    _register_task(tid, "repeat", interval_hours=interval_hours, text=text, photo_file_id=photo_file_id, caption=caption)
+    t = threading.Thread(target=_run_repeat, args=(tid, interval_hours, text, photo_file_id, caption), daemon=True)
     t.start()
-    bot.reply_to(
-        message,
-        f"✅ Repeat task #{tid} started — every {interval_hours}h to {len(tracked_groups)} group(s).",
-    )
+    bot.reply_to(message, f"✅ Repeat task #{tid} started — every {interval_hours}h to {len(tracked_groups)} group(s).\nUse /stop_task {tid} to stop it.")
 
 
 # ─────────────────────────────────────────────
 # SCHEDULE TASK
 # ─────────────────────────────────────────────
 def _run_schedule(task_id, scheduled_time_str, text, photo_file_id, caption):
-    """scheduled_time_str: 'HH:MM AM/PM' e.g. '09:30 AM'"""
     stop_event = _stop_event_for(task_id)
     while not stop_event.is_set():
         now = datetime.datetime.now()
@@ -700,11 +678,10 @@ def _run_schedule(task_id, scheduled_time_str, text, photo_file_id, caption):
                 year=now.year, month=now.month, day=now.day
             )
         except ValueError:
-            # Try 24h format fallback
             try:
-                target = datetime.datetime.strptime(
-                    scheduled_time_str, "%H:%M"
-                ).replace(year=now.year, month=now.month, day=now.day)
+                target = datetime.datetime.strptime(scheduled_time_str, "%H:%M").replace(
+                    year=now.year, month=now.month, day=now.day
+                )
             except ValueError:
                 break
         if target <= now:
@@ -713,7 +690,14 @@ def _run_schedule(task_id, scheduled_time_str, text, photo_file_id, caption):
         stop_event.wait(timeout=wait_secs)
         if stop_event.is_set():
             break
-        deliver_to_groups(text=text, photo_file_id=photo_file_id, caption=caption)
+        task = active_tasks.get(str(task_id), {})
+        tg = task.get("targeted_groups") or []
+        deliver_to_groups(
+            text=text,
+            photo_file_id=photo_file_id,
+            caption=caption,
+            targeted_group_ids=tg if tg else None,
+        )
     _unregister_task(task_id)
     task_stop_events.pop(str(task_id), None)
 
@@ -732,8 +716,6 @@ def cmd_schedule(message):
         bot.reply_to(message, "⚠️ No groups are being tracked yet.")
         return
 
-    # /schedule HH:MM AM/PM message
-    # Consume first 3 tokens as time (e.g. "09:30 AM")
     parts = message.text.split(None, 3)
     if len(parts) < 3:
         bot.reply_to(message, "Usage: /schedule <HH:MM> <AM/PM> <message>")
@@ -746,9 +728,7 @@ def cmd_schedule(message):
 
     if message.reply_to_message and message.reply_to_message.photo:
         photo_file_id = message.reply_to_message.photo[-1].file_id
-        caption = message.reply_to_message.caption or (
-            parts[3] if len(parts) > 3 else ""
-        )
+        caption = message.reply_to_message.caption or (parts[3] if len(parts) > 3 else "")
     elif len(parts) > 3:
         text = parts[3]
     else:
@@ -756,24 +736,10 @@ def cmd_schedule(message):
         return
 
     tid = _new_task_id()
-    _register_task(
-        tid,
-        "schedule",
-        scheduled_time=scheduled_time_str,
-        text=text,
-        photo_file_id=photo_file_id,
-        caption=caption,
-    )
-    t = threading.Thread(
-        target=_run_schedule,
-        args=(tid, scheduled_time_str, text, photo_file_id, caption),
-        daemon=True,
-    )
+    _register_task(tid, "schedule", scheduled_time=scheduled_time_str, text=text, photo_file_id=photo_file_id, caption=caption)
+    t = threading.Thread(target=_run_schedule, args=(tid, scheduled_time_str, text, photo_file_id, caption), daemon=True)
     t.start()
-    bot.reply_to(
-        message,
-        f"✅ Schedule task #{tid} created — daily at {scheduled_time_str} to {len(tracked_groups)} group(s).",
-    )
+    bot.reply_to(message, f"✅ Schedule task #{tid} created — daily at {scheduled_time_str} to {len(tracked_groups)} group(s).\nUse /stop_task {tid} to stop it.")
 
 
 # ─────────────────────────────────────────────
@@ -807,18 +773,15 @@ def cmd_broadcast(message):
             return
         text = parts[1]
 
-    def _do_broadcast():
-        deliver_to_groups(text=text, photo_file_id=photo_file_id, caption=caption)
-
-    threading.Thread(target=_do_broadcast, daemon=True).start()
+    threading.Thread(target=deliver_to_groups, kwargs={"text": text, "photo_file_id": photo_file_id, "caption": caption}, daemon=True).start()
     bot.reply_to(message, f"📢 Broadcasting to {len(tracked_groups)} group(s)...")
 
 
 # ─────────────────────────────────────────────
-# STOP REPEAT / SCHEDULE
+# /stop_task (unified stop for repeat + schedule)
 # ─────────────────────────────────────────────
-@bot.message_handler(commands=["stop_rpt"])
-def cmd_stop_rpt(message):
+@bot.message_handler(commands=["stop_task", "stop_rpt", "stop_schdl"])
+def cmd_stop_task(message):
     if not security_check(message):
         return
     if not is_admin(message):
@@ -826,43 +789,23 @@ def cmd_stop_rpt(message):
         return
     parts = message.text.split(None, 1)
     if len(parts) < 2:
-        bot.reply_to(message, "Usage: /stop_rpt <task_id>")
+        bot.reply_to(message, "Usage: /stop_task <task_id>")
         return
     tid = parts[1].strip()
     if tid not in active_tasks:
-        bot.reply_to(message, f"❌ Task #{tid} not found.")
+        bot.reply_to(message, f"❌ Task #{tid} not found. Use /task_list to see active tasks.")
         return
+    task_type = active_tasks[tid].get("type", "task")
     if tid in task_stop_events:
         task_stop_events[tid].set()
     _unregister_task(int(tid))
-    bot.reply_to(message, f"🛑 Repeat task #{tid} stopped.")
-
-
-@bot.message_handler(commands=["stop_schdl"])
-def cmd_stop_schdl(message):
-    if not security_check(message):
-        return
-    if not is_admin(message):
-        bot.reply_to(message, "⛔ Admin only.")
-        return
-    parts = message.text.split(None, 1)
-    if len(parts) < 2:
-        bot.reply_to(message, "Usage: /stop_schdl <task_id>")
-        return
-    tid = parts[1].strip()
-    if tid not in active_tasks:
-        bot.reply_to(message, f"❌ Task #{tid} not found.")
-        return
-    if tid in task_stop_events:
-        task_stop_events[tid].set()
-    _unregister_task(int(tid))
-    bot.reply_to(message, f"🛑 Schedule task #{tid} stopped.")
+    bot.reply_to(message, f"🛑 {task_type.capitalize()} task #{tid} stopped.")
 
 
 # ─────────────────────────────────────────────
 # /task_list
 # ─────────────────────────────────────────────
-@bot.message_handler(commands=["task_list"])
+@bot.message_handler(commands=["task_list", "tasks"])
 def cmd_task_list(message):
     if not security_check(message):
         return
@@ -872,27 +815,35 @@ def cmd_task_list(message):
     if not active_tasks:
         bot.reply_to(message, "📋 No active tasks.")
         return
-    lines = [f"📋 *Active Tasks ({len(active_tasks)}):*\n"]
-    for pos, (tid, task) in enumerate(
-        sorted(active_tasks.items(), key=lambda x: int(x[0])), start=1
-    ):
-        ttype = task.get("type", "?")
-        emoji = "🔁" if ttype == "repeat" else "⏰"
-        if ttype == "repeat":
-            detail = f"every {task.get('interval_hours')}h"
-        else:
-            detail = f"daily at {task.get('scheduled_time')}"
-        content = (
-            "📷 photo"
-            if task.get("photo_file_id")
-            else f"💬 {str(task.get('text', ''))[:40]}"
-        )
-        lines.append(
-            f"{emoji} *ID #{tid}* — {detail}\n   {content}\n   Stop: /stop_rpt {tid}"
-            if ttype == "repeat"
-            else f"{emoji} *ID #{tid}* — {detail}\n   {content}\n   Stop: /stop_schdl {tid}"
-        )
-    bot.reply_to(message, "\n\n".join(lines), parse_mode="Markdown")
+
+    lines = [f"📋 Active Tasks ({len(active_tasks)}):"]
+    for tid, task in sorted(active_tasks.items(), key=lambda x: int(x[0])):
+        try:
+            ttype = task.get("type", "?")
+            emoji = "🔁" if ttype == "repeat" else "⏰"
+
+            if ttype == "repeat":
+                detail = f"every {task.get('interval_hours')}h"
+            else:
+                detail = f"daily at {task.get('scheduled_time', '?')}"
+
+            content = "📷 photo" if task.get("photo_file_id") else f"💬 {str(task.get('text', ''))[:40]}"
+
+            tg = task.get("targeted_groups") or []
+            if tg:
+                group_names = []
+                for g in tg:
+                    info = tracked_groups.get(str(g))
+                    group_names.append(info["name"] if info else str(g))
+                groups_str = f"🎯 {', '.join(group_names)}"
+            else:
+                groups_str = f"📡 All {len(tracked_groups)} group(s)"
+
+            lines.append(f"\n{emoji} Task #{tid} — {detail}\n   {content}\n   {groups_str}\n   Stop: /stop_task {tid}")
+        except Exception as e:
+            lines.append(f"\n⚠️ Task #{tid} (error reading: {e})")
+
+    bot.reply_to(message, "\n".join(lines))
 
 
 # ─────────────────────────────────────────────
@@ -905,7 +856,7 @@ def cmd_clear_tasks(message):
     if not is_admin(message):
         bot.reply_to(message, "⛔ Admin only.")
         return
-    for tid, ev in list(task_stop_events.items()):
+    for ev in list(task_stop_events.values()):
         ev.set()
     task_stop_events.clear()
     active_tasks.clear()
@@ -925,28 +876,109 @@ def restore_tasks():
         task_id = task.get("id")
         if ttype == "repeat":
             interval_hours = task.get("interval_hours", 1)
-            t = threading.Thread(
-                target=_run_repeat,
-                args=(task_id, interval_hours, text, photo_file_id, caption),
-                daemon=True,
-            )
+            t = threading.Thread(target=_run_repeat, args=(task_id, interval_hours, text, photo_file_id, caption), daemon=True)
             t.start()
             print(f"[INFO] Restored repeat task #{task_id} (every {interval_hours}h)")
         elif ttype == "schedule":
             scheduled_time = task.get("scheduled_time")
-            t = threading.Thread(
-                target=_run_schedule,
-                args=(task_id, scheduled_time, text, photo_file_id, caption),
-                daemon=True,
-            )
+            t = threading.Thread(target=_run_schedule, args=(task_id, scheduled_time, text, photo_file_id, caption), daemon=True)
             t.start()
-            print(
-                f"[INFO] Restored schedule task #{task_id} (daily at {scheduled_time})"
-            )
+            print(f"[INFO] Restored schedule task #{task_id} (daily at {scheduled_time})")
 
 
 # ─────────────────────────────────────────────
-# HEALTH CHECK WEB SERVER
+# INTERNAL HTTP API (port 8001 — localhost only)
+# Used by the Express admin dashboard
+# ─────────────────────────────────────────────
+class InternalAPIHandler(BaseHTTPRequestHandler):
+    def _send(self, code, data):
+        body = json.dumps(data).encode()
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _read_body(self):
+        length = int(self.headers.get("Content-Length", 0))
+        if length:
+            return json.loads(self.rfile.read(length))
+        return {}
+
+    def do_GET(self):
+        if self.path == "/status":
+            self._send(200, {
+                "tracked_groups": len(tracked_groups),
+                "active_tasks": len(active_tasks),
+                "public_access": public_access_enabled,
+                "translation": translation_enabled,
+                "broadcast": broadcast_enabled,
+                "schedule": schedule_enabled,
+                "repeat": repeat_enabled,
+            })
+        elif self.path == "/groups":
+            self._send(200, list(tracked_groups.values()))
+        elif self.path == "/tasks":
+            self._send(200, list(active_tasks.values()))
+        else:
+            self._send(404, {"error": "not found"})
+
+    def do_POST(self):
+        if self.path == "/broadcast":
+            body = self._read_body()
+            if not broadcast_enabled:
+                self._send(403, {"error": "Broadcast is currently disabled"})
+                return
+            text = body.get("text")
+            photo_file_id = body.get("photo_file_id")
+            caption = body.get("caption")
+            tg = body.get("targeted_groups") or None
+            threading.Thread(
+                target=deliver_to_groups,
+                kwargs={"text": text, "photo_file_id": photo_file_id, "caption": caption, "targeted_group_ids": tg},
+                daemon=True,
+            ).start()
+            self._send(200, {"ok": True, "targets": len(tg) if tg else len(tracked_groups)})
+        else:
+            self._send(404, {"error": "not found"})
+
+    def do_PATCH(self):
+        if self.path.startswith("/tasks/"):
+            tid = self.path.split("/tasks/")[1]
+            body = self._read_body()
+            if tid in active_tasks:
+                active_tasks[tid]["targeted_groups"] = body.get("targeted_groups", [])
+                save_tasks()
+                self._send(200, {"ok": True})
+            else:
+                self._send(404, {"error": "task not found"})
+        else:
+            self._send(404, {"error": "not found"})
+
+    def do_DELETE(self):
+        if self.path.startswith("/tasks/"):
+            tid = self.path.split("/tasks/")[1]
+            if tid in active_tasks:
+                if tid in task_stop_events:
+                    task_stop_events[tid].set()
+                _unregister_task(int(tid))
+                self._send(200, {"ok": True})
+            else:
+                self._send(404, {"error": "task not found"})
+        else:
+            self._send(404, {"error": "not found"})
+
+    def log_message(self, format, *args):
+        pass  # Suppress access logs
+
+
+def start_internal_api():
+    server = HTTPServer(("127.0.0.1", 8001), InternalAPIHandler)
+    server.serve_forever()
+
+
+# ─────────────────────────────────────────────
+# HEALTH CHECK WEB SERVER (port 8000)
 # ─────────────────────────────────────────────
 class HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -956,7 +988,7 @@ class HealthHandler(BaseHTTPRequestHandler):
         self.wfile.write(b"Bot is alive!")
 
     def log_message(self, format, *args):
-        pass  # Suppress access logs
+        pass
 
 
 def start_health_server():
@@ -972,28 +1004,26 @@ if __name__ == "__main__":
         print("❌ TELEGRAM_BOT_TOKEN is not set. Exiting.")
         exit(1)
 
-    # Start health-check HTTP server
-    health_thread = threading.Thread(target=start_health_server, daemon=True)
-    health_thread.start()
+    # Start health-check HTTP server on port 8000
+    threading.Thread(target=start_health_server, daemon=True).start()
     print("✅ Health check server started on port 8000")
 
-    # Print uptime URL hint
-    import os as _os
+    # Start internal API server on port 8001 (localhost only, for admin dashboard)
+    threading.Thread(target=start_internal_api, daemon=True).start()
+    print("✅ Internal API server started on port 8001")
 
-    replit_domains = _os.environ.get("REPLIT_DOMAINS", "")
+    replit_domains = os.environ.get("REPLIT_DOMAINS", "")
     if replit_domains:
         domain = replit_domains.split(",")[0].strip()
-        print(f"\n🌐 Uptime URL (plug into UptimeRobot / Cron-Job.org):")
-        print(f"   https://{domain}/api/health\n")
+        print(f"\n🌐 Admin Dashboard: https://{domain}/admin")
+        print(f"🌐 UptimeRobot URL: https://{domain}/\n")
     else:
-        print("\n🌐 Health endpoint available at: http://localhost:8080\n")
+        print("\n🌐 Admin Dashboard: http://localhost:8080/admin\n")
 
-    # Restore persisted tasks from previous run
     restore_tasks()
     print(f"[INFO] Restored {len(active_tasks)} task(s) from disk.")
     print(f"[INFO] Tracking {len(tracked_groups)} group(s).")
 
-    # Start polling
     print("🤖 Bot is running. Polling for updates...")
     while True:
         try:
