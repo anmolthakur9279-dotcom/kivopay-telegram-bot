@@ -8,12 +8,14 @@ from google import genai as genai_client
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 # ─────────────────────────────────────────────
-# CONFIGb 
+# CONFIGb
 # ─────────────────────────────────────────────
 BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY", "")
 
-PRIMARY_ADMINS = ["ak04756", "kivo4259"]
+PRIMARY_ADMINS = [
+    "ak04756",
+]
 ALLOWED_ADMINS = ["ak04756", "kivo4259", "kivopaycarl"]
 
 # Runtime toggles
@@ -30,12 +32,14 @@ BLACKLIST_FILE = "blacklisted_users.json"
 GROUPS_FILE = "tracked_groups.json"
 TASKS_FILE = "active_tasks.json"
 
+
 def _load_json(path, default):
     try:
         with open(path, "r") as f:
             return json.load(f)
     except Exception:
         return default
+
 
 def _save_json(path, data):
     try:
@@ -44,6 +48,7 @@ def _save_json(path, data):
     except Exception as e:
         print(f"[WARN] Could not save {path}: {e}")
 
+
 blacklisted_users = set(_load_json(BLACKLIST_FILE, []))
 tracked_groups = set(_load_json(GROUPS_FILE, []))
 tasks_data = _load_json(TASKS_FILE, {"counter": 0, "tasks": {}})
@@ -51,14 +56,18 @@ task_counter = tasks_data.get("counter", 0)
 active_tasks = tasks_data.get("tasks", {})  # {str(task_id): task_dict}
 task_stop_events = {}  # {str(task_id): threading.Event}
 
+
 def save_blacklist():
     _save_json(BLACKLIST_FILE, list(blacklisted_users))
+
 
 def save_groups():
     _save_json(GROUPS_FILE, list(tracked_groups))
 
+
 def save_tasks():
     _save_json(TASKS_FILE, {"counter": task_counter, "tasks": active_tasks})
+
 
 # ─────────────────────────────────────────────
 # GOOGLE GENAI
@@ -68,6 +77,7 @@ try:
 except Exception as e:
     print(f"[WARN] Gemini init failed: {e}")
     gemini_client = None
+
 
 def translate_text(text):
     if not gemini_client:
@@ -85,6 +95,7 @@ def translate_text(text):
     except Exception as e:
         return f"❌ Translation error: {e}"
 
+
 def translate_image(file_id, caption):
     if not gemini_client:
         return "❌ Translation service unavailable."
@@ -92,6 +103,7 @@ def translate_image(file_id, caption):
         import urllib.request
         import io
         from google.genai import types as genai_types
+
         bot_file = bot.get_file(file_id)
         file_url = f"https://api.telegram.org/file/bot{BOT_TOKEN}/{bot_file.file_path}"
         img_bytes = urllib.request.urlopen(file_url).read()
@@ -112,10 +124,12 @@ def translate_image(file_id, caption):
     except Exception as e:
         return f"❌ Image translation error: {e}"
 
+
 # ─────────────────────────────────────────────
 # BOT INIT
 # ─────────────────────────────────────────────
 bot = telebot.TeleBot(BOT_TOKEN, parse_mode=None)
+
 
 # ─────────────────────────────────────────────
 # SECURITY INTERCEPTOR
@@ -125,23 +139,32 @@ def security_check(message):
     username = (message.from_user.username or "").lower()
     if username in blacklisted_users:
         try:
-            bot.reply_to(message, "❌ You have been banned from using this bot by the administrator.")
+            bot.reply_to(
+                message,
+                "❌ You have been banned from using this bot by the administrator.",
+            )
         except Exception:
             pass
         return False
     if not public_access_enabled and username not in ALLOWED_ADMINS:
         try:
-            bot.reply_to(message, "🔒 This bot is currently locked by the administrator. Only authorized users can access it.")
+            bot.reply_to(
+                message,
+                "🔒 This bot is currently locked by the administrator. Only authorized users can access it.",
+            )
         except Exception:
             pass
         return False
     return True
 
+
 def is_admin(message):
     return (message.from_user.username or "").lower() in ALLOWED_ADMINS
 
+
 def is_primary_admin(message):
     return (message.from_user.username or "").lower() in PRIMARY_ADMINS
+
 
 # ─────────────────────────────────────────────
 # GROUP TRACKING
@@ -153,6 +176,7 @@ def on_new_member(message):
             if member.id == bot.get_me().id:
                 tracked_groups.add(message.chat.id)
                 save_groups()
+
 
 # ─────────────────────────────────────────────
 # BROADCAST DELIVERY
@@ -167,6 +191,7 @@ def deliver_to_groups(text=None, photo_file_id=None, caption=None):
         except Exception as e:
             print(f"[WARN] Failed to deliver to {chat_id}: {e}")
 
+
 # ─────────────────────────────────────────────
 # /start
 # ─────────────────────────────────────────────
@@ -177,7 +202,10 @@ def cmd_start(message):
     if message.chat.type in ("group", "supergroup"):
         tracked_groups.add(message.chat.id)
         save_groups()
-    bot.reply_to(message, "👋 Hello! I'm online and ready. Use /help to see available commands.")
+    bot.reply_to(
+        message, "👋 Hello! I'm online and ready. Use /help to see available commands."
+    )
+
 
 # ─────────────────────────────────────────────
 # /help
@@ -240,6 +268,7 @@ def cmd_help(message):
         )
     bot.reply_to(message, text, parse_mode="Markdown")
 
+
 # ─────────────────────────────────────────────
 # TRANSLATION COMMANDS
 # ─────────────────────────────────────────────
@@ -248,7 +277,9 @@ def cmd_translate(message):
     if not security_check(message):
         return
     if not translation_enabled:
-        bot.reply_to(message, "🔇 Translation is currently disabled by the administrator.")
+        bot.reply_to(
+            message, "🔇 Translation is currently disabled by the administrator."
+        )
         return
 
     # Handle reply to photo
@@ -262,10 +293,13 @@ def cmd_translate(message):
     # Handle text argument
     parts = message.text.split(None, 1)
     if len(parts) < 2:
-        bot.reply_to(message, "Usage: /trans <text>  or reply to a photo with /translate")
+        bot.reply_to(
+            message, "Usage: /trans <text>  or reply to a photo with /translate"
+        )
         return
     result = translate_text(parts[1])
     bot.reply_to(message, result)
+
 
 # ─────────────────────────────────────────────
 # /start_tracking
@@ -280,9 +314,12 @@ def cmd_start_tracking(message):
     if message.chat.type in ("group", "supergroup"):
         tracked_groups.add(message.chat.id)
         save_groups()
-        bot.reply_to(message, f"✅ This group (ID: {message.chat.id}) is now being tracked.")
+        bot.reply_to(
+            message, f"✅ This group (ID: {message.chat.id}) is now being tracked."
+        )
     else:
         bot.reply_to(message, "ℹ️ This command must be used in a group chat.")
+
 
 # ─────────────────────────────────────────────
 # /groups
@@ -307,6 +344,7 @@ def cmd_groups(message):
         lines.append(f"{idx}. {name}\n   `{chat_id}`")
     bot.reply_to(message, "\n".join(lines), parse_mode="Markdown")
 
+
 # ─────────────────────────────────────────────
 # /remove_group
 # ─────────────────────────────────────────────
@@ -319,19 +357,32 @@ def cmd_remove_group(message):
         return
     parts = message.text.split(None, 1)
     if len(parts) < 2:
-        bot.reply_to(message, "Usage: /remove_group <group_id>\nUse /groups to see all IDs.")
+        bot.reply_to(
+            message, "Usage: /remove_group <group_id>\nUse /groups to see all IDs."
+        )
         return
     try:
         chat_id = int(parts[1].strip())
     except ValueError:
-        bot.reply_to(message, "❌ Invalid group ID. Must be a number (e.g. -1001234567890).")
+        bot.reply_to(
+            message, "❌ Invalid group ID. Must be a number (e.g. -1001234567890)."
+        )
         return
     if chat_id in tracked_groups:
         tracked_groups.discard(chat_id)
         save_groups()
-        bot.reply_to(message, f"✅ Group `{chat_id}` removed from tracking list.", parse_mode="Markdown")
+        bot.reply_to(
+            message,
+            f"✅ Group `{chat_id}` removed from tracking list.",
+            parse_mode="Markdown",
+        )
     else:
-        bot.reply_to(message, f"❌ Group `{chat_id}` is not in the tracking list.", parse_mode="Markdown")
+        bot.reply_to(
+            message,
+            f"❌ Group `{chat_id}` is not in the tracking list.",
+            parse_mode="Markdown",
+        )
+
 
 # ─────────────────────────────────────────────
 # /quota_status
@@ -354,8 +405,9 @@ def cmd_quota_status(message):
         f"Broadcast: {'✅' if broadcast_enabled else '❌'}\n"
         f"Schedule: {'✅' if schedule_enabled else '❌'}\n"
         f"Repeat: {'✅' if repeat_enabled else '❌'}",
-        parse_mode="Markdown"
+        parse_mode="Markdown",
     )
+
 
 # ─────────────────────────────────────────────
 # /stop_bot / /start_bot
@@ -371,6 +423,7 @@ def cmd_stop_bot(message):
     public_access_enabled = False
     bot.reply_to(message, "🔒 Bot locked. Only admins can use it now.")
 
+
 @bot.message_handler(commands=["start_bot"])
 def cmd_start_bot(message):
     global public_access_enabled
@@ -382,6 +435,7 @@ def cmd_start_bot(message):
     public_access_enabled = True
     bot.reply_to(message, "✅ Bot unlocked. Public access enabled.")
 
+
 # ─────────────────────────────────────────────
 # TOGGLE COMMANDS (primary admin only)
 # ─────────────────────────────────────────────
@@ -391,66 +445,104 @@ def _primary_only(message):
         return False
     return True
 
+
 @bot.message_handler(commands=["toggle_trans"])
 def cmd_toggle_trans(message):
     global translation_enabled
-    if not security_check(message): return
-    if not _primary_only(message): return
+    if not security_check(message):
+        return
+    if not _primary_only(message):
+        return
     translation_enabled = not translation_enabled
-    bot.reply_to(message, f"Translation is now {'✅ enabled' if translation_enabled else '❌ disabled'}.")
+    bot.reply_to(
+        message,
+        f"Translation is now {'✅ enabled' if translation_enabled else '❌ disabled'}.",
+    )
+
 
 @bot.message_handler(commands=["toggle_broadcast"])
 def cmd_toggle_broadcast(message):
     global broadcast_enabled
-    if not security_check(message): return
-    if not _primary_only(message): return
+    if not security_check(message):
+        return
+    if not _primary_only(message):
+        return
     broadcast_enabled = not broadcast_enabled
-    bot.reply_to(message, f"Broadcast is now {'✅ enabled' if broadcast_enabled else '❌ disabled'}.")
+    bot.reply_to(
+        message,
+        f"Broadcast is now {'✅ enabled' if broadcast_enabled else '❌ disabled'}.",
+    )
+
 
 @bot.message_handler(commands=["toggle_schedule"])
 def cmd_toggle_schedule(message):
     global schedule_enabled
-    if not security_check(message): return
-    if not _primary_only(message): return
+    if not security_check(message):
+        return
+    if not _primary_only(message):
+        return
     schedule_enabled = not schedule_enabled
-    bot.reply_to(message, f"Scheduling is now {'✅ enabled' if schedule_enabled else '❌ disabled'}.")
+    bot.reply_to(
+        message,
+        f"Scheduling is now {'✅ enabled' if schedule_enabled else '❌ disabled'}.",
+    )
+
 
 @bot.message_handler(commands=["toggle_repeat"])
 def cmd_toggle_repeat(message):
     global repeat_enabled
-    if not security_check(message): return
-    if not _primary_only(message): return
+    if not security_check(message):
+        return
+    if not _primary_only(message):
+        return
     repeat_enabled = not repeat_enabled
-    bot.reply_to(message, f"Repeat is now {'✅ enabled' if repeat_enabled else '❌ disabled'}.")
+    bot.reply_to(
+        message, f"Repeat is now {'✅ enabled' if repeat_enabled else '❌ disabled'}."
+    )
+
 
 @bot.message_handler(commands=["toggle_public"])
 def cmd_toggle_public(message):
     global public_access_enabled
-    if not security_check(message): return
-    if not _primary_only(message): return
+    if not security_check(message):
+        return
+    if not _primary_only(message):
+        return
     public_access_enabled = not public_access_enabled
-    bot.reply_to(message, f"Public access is now {'✅ enabled' if public_access_enabled else '🔒 disabled'}.")
+    bot.reply_to(
+        message,
+        f"Public access is now {'✅ enabled' if public_access_enabled else '🔒 disabled'}.",
+    )
+
 
 @bot.message_handler(commands=["lock"])
 def cmd_lock(message):
     global public_access_enabled
-    if not security_check(message): return
-    if not _primary_only(message): return
+    if not security_check(message):
+        return
+    if not _primary_only(message):
+        return
     public_access_enabled = False
     bot.reply_to(message, "🔒 Bot locked to admins only.")
+
 
 @bot.message_handler(commands=["unlock"])
 def cmd_unlock(message):
     global public_access_enabled
-    if not security_check(message): return
-    if not _primary_only(message): return
+    if not security_check(message):
+        return
+    if not _primary_only(message):
+        return
     public_access_enabled = True
     bot.reply_to(message, "🔓 Bot unlocked for everyone.")
 
+
 @bot.message_handler(commands=["block"])
 def cmd_block(message):
-    if not security_check(message): return
-    if not _primary_only(message): return
+    if not security_check(message):
+        return
+    if not _primary_only(message):
+        return
     parts = message.text.split(None, 1)
     if len(parts) < 2:
         bot.reply_to(message, "Usage: /block <username>")
@@ -460,10 +552,13 @@ def cmd_block(message):
     save_blacklist()
     bot.reply_to(message, f"✅ @{target} has been blocked.")
 
+
 @bot.message_handler(commands=["unblock"])
 def cmd_unblock(message):
-    if not security_check(message): return
-    if not _primary_only(message): return
+    if not security_check(message):
+        return
+    if not _primary_only(message):
+        return
     parts = message.text.split(None, 1)
     if len(parts) < 2:
         bot.reply_to(message, "Usage: /unblock <username>")
@@ -473,6 +568,7 @@ def cmd_unblock(message):
     save_blacklist()
     bot.reply_to(message, f"✅ @{target} has been unblocked.")
 
+
 # ─────────────────────────────────────────────
 # TASK MANAGEMENT HELPERS
 # ─────────────────────────────────────────────
@@ -481,8 +577,16 @@ def _new_task_id():
     task_counter += 1
     return task_counter
 
-def _register_task(task_id, task_type, interval_hours=None, scheduled_time=None,
-                   text=None, photo_file_id=None, caption=None):
+
+def _register_task(
+    task_id,
+    task_type,
+    interval_hours=None,
+    scheduled_time=None,
+    text=None,
+    photo_file_id=None,
+    caption=None,
+):
     tid = str(task_id)
     active_tasks[tid] = {
         "id": task_id,
@@ -495,16 +599,19 @@ def _register_task(task_id, task_type, interval_hours=None, scheduled_time=None,
     }
     save_tasks()
 
+
 def _unregister_task(task_id):
     tid = str(task_id)
     active_tasks.pop(tid, None)
     save_tasks()
+
 
 def _stop_event_for(task_id):
     tid = str(task_id)
     if tid not in task_stop_events:
         task_stop_events[tid] = threading.Event()
     return task_stop_events[tid]
+
 
 # ─────────────────────────────────────────────
 # REPEAT TASK
@@ -517,9 +624,11 @@ def _run_repeat(task_id, interval_hours, text, photo_file_id, caption):
     _unregister_task(task_id)
     task_stop_events.pop(str(task_id), None)
 
+
 @bot.message_handler(commands=["repeat"])
 def cmd_repeat(message):
-    if not security_check(message): return
+    if not security_check(message):
+        return
     if not is_admin(message):
         bot.reply_to(message, "⛔ Admin only.")
         return
@@ -548,7 +657,9 @@ def cmd_repeat(message):
 
     if message.reply_to_message and message.reply_to_message.photo:
         photo_file_id = message.reply_to_message.photo[-1].file_id
-        caption = message.reply_to_message.caption or (parts[2] if len(parts) > 2 else "")
+        caption = message.reply_to_message.caption or (
+            parts[2] if len(parts) > 2 else ""
+        )
     elif len(parts) > 2:
         text = parts[2]
     else:
@@ -556,11 +667,25 @@ def cmd_repeat(message):
         return
 
     tid = _new_task_id()
-    _register_task(tid, "repeat", interval_hours=interval_hours,
-                   text=text, photo_file_id=photo_file_id, caption=caption)
-    t = threading.Thread(target=_run_repeat, args=(tid, interval_hours, text, photo_file_id, caption), daemon=True)
+    _register_task(
+        tid,
+        "repeat",
+        interval_hours=interval_hours,
+        text=text,
+        photo_file_id=photo_file_id,
+        caption=caption,
+    )
+    t = threading.Thread(
+        target=_run_repeat,
+        args=(tid, interval_hours, text, photo_file_id, caption),
+        daemon=True,
+    )
     t.start()
-    bot.reply_to(message, f"✅ Repeat task #{tid} started — every {interval_hours}h to {len(tracked_groups)} group(s).")
+    bot.reply_to(
+        message,
+        f"✅ Repeat task #{tid} started — every {interval_hours}h to {len(tracked_groups)} group(s).",
+    )
+
 
 # ─────────────────────────────────────────────
 # SCHEDULE TASK
@@ -577,9 +702,9 @@ def _run_schedule(task_id, scheduled_time_str, text, photo_file_id, caption):
         except ValueError:
             # Try 24h format fallback
             try:
-                target = datetime.datetime.strptime(scheduled_time_str, "%H:%M").replace(
-                    year=now.year, month=now.month, day=now.day
-                )
+                target = datetime.datetime.strptime(
+                    scheduled_time_str, "%H:%M"
+                ).replace(year=now.year, month=now.month, day=now.day)
             except ValueError:
                 break
         if target <= now:
@@ -592,9 +717,11 @@ def _run_schedule(task_id, scheduled_time_str, text, photo_file_id, caption):
     _unregister_task(task_id)
     task_stop_events.pop(str(task_id), None)
 
+
 @bot.message_handler(commands=["schedule"])
 def cmd_schedule(message):
-    if not security_check(message): return
+    if not security_check(message):
+        return
     if not is_admin(message):
         bot.reply_to(message, "⛔ Admin only.")
         return
@@ -619,7 +746,9 @@ def cmd_schedule(message):
 
     if message.reply_to_message and message.reply_to_message.photo:
         photo_file_id = message.reply_to_message.photo[-1].file_id
-        caption = message.reply_to_message.caption or (parts[3] if len(parts) > 3 else "")
+        caption = message.reply_to_message.caption or (
+            parts[3] if len(parts) > 3 else ""
+        )
     elif len(parts) > 3:
         text = parts[3]
     else:
@@ -627,18 +756,33 @@ def cmd_schedule(message):
         return
 
     tid = _new_task_id()
-    _register_task(tid, "schedule", scheduled_time=scheduled_time_str,
-                   text=text, photo_file_id=photo_file_id, caption=caption)
-    t = threading.Thread(target=_run_schedule, args=(tid, scheduled_time_str, text, photo_file_id, caption), daemon=True)
+    _register_task(
+        tid,
+        "schedule",
+        scheduled_time=scheduled_time_str,
+        text=text,
+        photo_file_id=photo_file_id,
+        caption=caption,
+    )
+    t = threading.Thread(
+        target=_run_schedule,
+        args=(tid, scheduled_time_str, text, photo_file_id, caption),
+        daemon=True,
+    )
     t.start()
-    bot.reply_to(message, f"✅ Schedule task #{tid} created — daily at {scheduled_time_str} to {len(tracked_groups)} group(s).")
+    bot.reply_to(
+        message,
+        f"✅ Schedule task #{tid} created — daily at {scheduled_time_str} to {len(tracked_groups)} group(s).",
+    )
+
 
 # ─────────────────────────────────────────────
 # /broadcast
 # ─────────────────────────────────────────────
 @bot.message_handler(commands=["broadcast"])
 def cmd_broadcast(message):
-    if not security_check(message): return
+    if not security_check(message):
+        return
     if not is_admin(message):
         bot.reply_to(message, "⛔ Admin only.")
         return
@@ -669,12 +813,14 @@ def cmd_broadcast(message):
     threading.Thread(target=_do_broadcast, daemon=True).start()
     bot.reply_to(message, f"📢 Broadcasting to {len(tracked_groups)} group(s)...")
 
+
 # ─────────────────────────────────────────────
 # STOP REPEAT / SCHEDULE
 # ─────────────────────────────────────────────
 @bot.message_handler(commands=["stop_rpt"])
 def cmd_stop_rpt(message):
-    if not security_check(message): return
+    if not security_check(message):
+        return
     if not is_admin(message):
         bot.reply_to(message, "⛔ Admin only.")
         return
@@ -691,9 +837,11 @@ def cmd_stop_rpt(message):
     _unregister_task(int(tid))
     bot.reply_to(message, f"🛑 Repeat task #{tid} stopped.")
 
+
 @bot.message_handler(commands=["stop_schdl"])
 def cmd_stop_schdl(message):
-    if not security_check(message): return
+    if not security_check(message):
+        return
     if not is_admin(message):
         bot.reply_to(message, "⛔ Admin only.")
         return
@@ -710,12 +858,14 @@ def cmd_stop_schdl(message):
     _unregister_task(int(tid))
     bot.reply_to(message, f"🛑 Schedule task #{tid} stopped.")
 
+
 # ─────────────────────────────────────────────
 # /task_list
 # ─────────────────────────────────────────────
 @bot.message_handler(commands=["task_list"])
 def cmd_task_list(message):
-    if not security_check(message): return
+    if not security_check(message):
+        return
     if not is_admin(message):
         bot.reply_to(message, "⛔ Admin only.")
         return
@@ -723,23 +873,35 @@ def cmd_task_list(message):
         bot.reply_to(message, "📋 No active tasks.")
         return
     lines = [f"📋 *Active Tasks ({len(active_tasks)}):*\n"]
-    for pos, (tid, task) in enumerate(sorted(active_tasks.items(), key=lambda x: int(x[0])), start=1):
+    for pos, (tid, task) in enumerate(
+        sorted(active_tasks.items(), key=lambda x: int(x[0])), start=1
+    ):
         ttype = task.get("type", "?")
         emoji = "🔁" if ttype == "repeat" else "⏰"
         if ttype == "repeat":
             detail = f"every {task.get('interval_hours')}h"
         else:
             detail = f"daily at {task.get('scheduled_time')}"
-        content = "📷 photo" if task.get("photo_file_id") else f"💬 {str(task.get('text',''))[:40]}"
-        lines.append(f"{emoji} *ID #{tid}* — {detail}\n   {content}\n   Stop: /stop_rpt {tid}" if ttype == "repeat" else f"{emoji} *ID #{tid}* — {detail}\n   {content}\n   Stop: /stop_schdl {tid}")
+        content = (
+            "📷 photo"
+            if task.get("photo_file_id")
+            else f"💬 {str(task.get('text', ''))[:40]}"
+        )
+        lines.append(
+            f"{emoji} *ID #{tid}* — {detail}\n   {content}\n   Stop: /stop_rpt {tid}"
+            if ttype == "repeat"
+            else f"{emoji} *ID #{tid}* — {detail}\n   {content}\n   Stop: /stop_schdl {tid}"
+        )
     bot.reply_to(message, "\n\n".join(lines), parse_mode="Markdown")
+
 
 # ─────────────────────────────────────────────
 # /clear_tasks
 # ─────────────────────────────────────────────
 @bot.message_handler(commands=["clear_tasks"])
 def cmd_clear_tasks(message):
-    if not security_check(message): return
+    if not security_check(message):
+        return
     if not is_admin(message):
         bot.reply_to(message, "⛔ Admin only.")
         return
@@ -749,6 +911,7 @@ def cmd_clear_tasks(message):
     active_tasks.clear()
     save_tasks()
     bot.reply_to(message, "🗑 All tasks cleared.")
+
 
 # ─────────────────────────────────────────────
 # RESTORE TASKS ON STARTUP
@@ -762,14 +925,25 @@ def restore_tasks():
         task_id = task.get("id")
         if ttype == "repeat":
             interval_hours = task.get("interval_hours", 1)
-            t = threading.Thread(target=_run_repeat, args=(task_id, interval_hours, text, photo_file_id, caption), daemon=True)
+            t = threading.Thread(
+                target=_run_repeat,
+                args=(task_id, interval_hours, text, photo_file_id, caption),
+                daemon=True,
+            )
             t.start()
             print(f"[INFO] Restored repeat task #{task_id} (every {interval_hours}h)")
         elif ttype == "schedule":
             scheduled_time = task.get("scheduled_time")
-            t = threading.Thread(target=_run_schedule, args=(task_id, scheduled_time, text, photo_file_id, caption), daemon=True)
+            t = threading.Thread(
+                target=_run_schedule,
+                args=(task_id, scheduled_time, text, photo_file_id, caption),
+                daemon=True,
+            )
             t.start()
-            print(f"[INFO] Restored schedule task #{task_id} (daily at {scheduled_time})")
+            print(
+                f"[INFO] Restored schedule task #{task_id} (daily at {scheduled_time})"
+            )
+
 
 # ─────────────────────────────────────────────
 # HEALTH CHECK WEB SERVER
@@ -784,9 +958,11 @@ class HealthHandler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
         pass  # Suppress access logs
 
+
 def start_health_server():
     server = HTTPServer(("0.0.0.0", 8000), HealthHandler)
     server.serve_forever()
+
 
 # ─────────────────────────────────────────────
 # MAIN
@@ -803,6 +979,7 @@ if __name__ == "__main__":
 
     # Print uptime URL hint
     import os as _os
+
     replit_domains = _os.environ.get("REPLIT_DOMAINS", "")
     if replit_domains:
         domain = replit_domains.split(",")[0].strip()
